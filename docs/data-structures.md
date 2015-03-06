@@ -5,7 +5,7 @@ This document describes the data structures for `go-swim` and the design rationa
 The design of `go-swim` borrows heavily from HashiCorp's [`memberlist`][memberlist] implementation of SWIM.
 
 
-## `Node` and `NodeState` as fundamental units of information
+## `Node` as the fundamental unit of information
 
 ```go
 type Node struct {
@@ -24,7 +24,7 @@ While the first iterations of the software may only support using the first addr
 We also assume that, for the first iteration of the software, that node names are unique. While `memberlist` rejects new nodes with the same name as an existing node, our (eventual) support for multiple addresses doesn't have as clear of a solution.
 
 
-### `InternalNode` for implementation-specific state information
+### `InternalNode` for internal state information
 
 ```go
 type NodeState int
@@ -38,7 +38,7 @@ const (
 type InternalNode {
     Node
     InternalId       []byte        // Byte representation of the node name
-    OrderingId       *big.Int      // Numeric representation of the internal ID
+    OrderingId       []byte        // ID representation used for ordering nodes
     Incarnation      uint32        // Last known incarnation number
     State            NodeState     // Current state
     StateLastUpdated time.Time     // Last time the state was updated
@@ -54,34 +54,75 @@ type InternalNode {
 `StateLastUpdated`: The last update time for a node is used to detect when a node has not replied to a ping or refuted its suspicion status.
 
 
+### `NodeVisitor` for populating node fields
+
+```go
+type NodeVisitor func(localNode *InternalNode, targetNode *InternalNode) (*InternalNode, error)
+
+// Implementations of NodeVisitor
+func HashNodeVisitor(hash func() hash.Hash) NodeVisitor {}
+func XorNodeVisitor(localNode *InternalNode, targetNode *InternalNode) (*InternalNode, error) {}
+```
+
+The `NodeVisitor` is responsible for updating an `InternalNode` for the given local `InternalNode`, modifying the relevant `InternalNode` fields as necessary. For example, it is used to implement the Chord and Kademlia distance metrics.
+
+`HashNodeVisitor` creates a node visitor that uses the given hash function to set the `InternalId` field of the target `InternalNode`. It is used for generating the "random" IDs needed by the Chord fingers and Kademlia XOR metric.
+
+`XorNodeVisitor` sets the `OrderingId` by XORing the local and target node `InternalIds`.
+
+
+### `NodeSorter` for sorting nodes
+
+```go
+type NodeSorter func(nodes []*InternalNode) error
+
+// Implementations of NodeSorter
+func OrderingIdNodeSorter(nodes []*InternalNode) error {}
+func ChordFingerNodeSorter(nodes []*InternalNode) error {}
+```
+
+The `NodeSorter` reorders the given nodes in ascending order. This is not necessarily the simple comparison-based sort used by `OrderingIdNodeSorter`. The `ChordFingerNodeSorter`, for example, orders the nodes based on the global ordering provided by `OrderingIdNodeSorter`.
+
+
 ## `NodeSelectionList` for peer selection
 
 ```go
 type NodeSelectionList interface {
-    func Add(node *Node) error {}
-    func Remove(node *Node) error {}
-    func Choose(nodes []*Node) ([]*Node, error) {}
-    func Next() (*Node, error) {}
-    func List() ([]*Node, error) {}
+    func Add(node *InternalNode) error {}
+    func Remove(node *InternalNode) error {}
+    func Choose(nodes []*InternalNode) ([]*InternalNode, error) {}
+    func Next() (*InternalNode, error) {}
+    func List() ([]*InternalNode, error) {}
 }
 
-// implements NodeSelectionList
+// Implements NodeSelectionList
 type ShuffleSelectionList struct {
-    Nodes     []*Node
+    Nodes     []*InternalNode
     nextIndex int
 }
 
 // http://en.wikipedia.org/wiki/Fisher–Yates_shuffle
 func (l *ShuffleSelectionList) Shuffle() {}
 
-// implements NodeSelectionList
+// Implements NodeSelectionList
 type BucketSelectionList struct {
-    sortedNodes []*Node
-    buckets     []*ShuffleSelectionList
+    k           uint                    // Number of buckets to maintain
+    sortedNodes []*InternalNode         // List of nodes sorted by OrderingId
+    buckets     []*ShuffleSelectionList // List of buckets
+}
+
+// Implements NodeSelectionList
+type NeighborhoodSelectionList struct {
+    k           uint                 // Number of regional buckets to maintain
+    r           uint                 // Size of the neighborhood
+    s           uint                 // Number of nodes to select from the neighborhood
+    region      BucketSelectionList  // Regional nodes are more than r nodes away
+    neighbors   ShuffleSelectionList // Neighboring nodes are within r nodes distance
+    sortedNodes []*InternalNode      // List of nodes sorted by OrderingId
 }
 ```
 
-The `NodeSelectionList` interface defines generic methods for managing a list of nodes for the purpose of choosing candidate nodes for pinging. The `ShuffleSelectionList` implements the round-robin shuffle method described in SWIM. The `BucketSelectionList` implements round-robin shuffle over buckets of sizes `ceil(n*(2/3)*(1/3)^i)` where `n` is the total number of nodes, `0 <= i < k` are the bucket numbers, and `k` is the number of nodes to ping during each protocol period.
+The `NodeSelectionList` interface defines generic methods for managing a list of nodes for the purpose of choosing candidate nodes for pinging. The `ShuffleSelectionList` implements the round-robin shuffle method described in SWIM. The `BucketSelectionList` implements round-robin shuffle over buckets of sizes `ceil(n*(2/3)*(1/3)^i)` where `n` is the total number of nodes, `0 <= i < k` are the bucket numbers, and `k` is the number of nodes to ping during each protocol period. The `NeighborhoodSelectionList` selects `s` nodes from the `r` closest neighboring nodes and the rest from the regional node list.
 
 
 ## `AftershockTicker` for periodically pinging peers
@@ -102,8 +143,6 @@ The `AftershockTicker` implements a ticker that also delivers phase-shifted afte
 | Ping k nodes              | Indirectly ping nodes if no reply received
 ```
 
-- `Delegate`
-    + `NodeFactory(name string, addrs []*net.Addr) (*NodeState, error)`
 
 - `MemberList`
     + `Conn *net.PacketConn`
