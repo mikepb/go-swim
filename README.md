@@ -1,6 +1,6 @@
 # go-swim
 
-The `go-swim` package implements a the [SWIM failure detector][swim] with a focus on rapid protocol prototyping. Specifically, the basic SWIM failure detection algorithm, described in a later section, is decomposed into the node selector component and the ping mechanism to allow us to replace the former with topologically-defined variants. The design of `go-swim` is inspired by and borrows heavily from HashiCorp's [`memberlist`][memberlist] implementation of SWIM.
+The `go-swim` package implements a the [SWIM failure detector][swim] with a focus on rapid protocol prototyping. Specifically, the basic SWIM failure detection algorithm, described in a later section, is decomposed into the node selector component and the ping mechanism to allow us to replace the former with topologically-defined variants. The design of `go-swim` is inspired by and borrows heavily from HashiCorp's [memberlist][] implementation of SWIM.
 
 
 ## Usage
@@ -40,9 +40,11 @@ The original SWIM failure detector used the round-robin selection method, shuffl
 For a more detailed description of the algorithm, please see the original [SWIM][swim] paper.
 
 
-### Improving the amortized and worst-case costs
+### Changes from memberlist and SWIM
 
-In our implementation of SWIM, we improve on the round-robin shuffle selection method by imposing a topology using one of two distance metrics.
+Memberlist improves on SWIM by introducing join and leave intents, allowing for non-piggybacked gossip, and implementing periodic full state synchronization. `go-swim` similarly uses join and leave intents, respectfully, to totally order a node's membership events from the time it joins and to sidestep the suspicion mechanism when a node gracefully leaves. However, `go-swim` does not implement non-piggybacked gossip nor full state synchronization.
+
+Instead of implementing non-piggybacked gossip outside of the SWIM messages, `go-swim` exposes the `p` configuration parameter to allow nodes to ping `p` other nodes instead of just one. This has the effect of improving both the dissemination and failure detection times at the cost of sending more messages. A future update to `go-swim` may implement allow for varying `p` with the number of pending unsent gossip messages.
 
 
 ## Design documents
