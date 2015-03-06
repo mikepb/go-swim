@@ -49,7 +49,7 @@ Instead of implementing non-piggybacked gossip outside of the SWIM messages, `go
 
 ## Design documents
 
-- [Data Structures][data-structure] describes the responsibilities and rationale for the data structures in `go-swim`.
+- [Data Structures][data-structures] describes the responsibilities and rationale for the data structures in `go-swim`.
 
 
 ## License
@@ -70,5 +70,5 @@ limitations under the License.
 
 
 [memberlist]: https://github.com/hashicorp/memberlist
-[data-structure]: docs/data-structure.md
+[data-structures]: docs/data-structures.md
 [swim]: http://www.cs.cornell.edu/~asdas/research/dsn02-SWIM.pdf
