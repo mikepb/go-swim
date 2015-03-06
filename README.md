@@ -14,7 +14,9 @@ TBD
 
 `S` is the suspicion period
 
-`k` is the number of regional peers that a process pings each protocol period
+`p` is the number of local peers that a processes uses for direct pings
+
+`k` is the number of regional peers that a process uses for batched indirect pings
 
 `d(x)` is the distance metric
 
@@ -29,7 +31,7 @@ SWIM solves the problem of providing each member process in a group a list of al
 
 The failure detection consists of two sub-protocols: basic SWIM and the _suspicion_ sub-protocol. Basic SWIM detects possible process failures, labeling these processes as _suspect_. When a process is marked as suspect, the _suspicion_ sub-protocol gives the suspect process time to refute its failure, reducing the probability of false positives. The combined failure detection protocol is run every _protocol period_ of _T_ time units, where _T_ is a configurable parameter that sets the interval between iterations of the failure detection algorithm.
 
-At the start of every protocol period, processes run the basic SWIM sub-protocol, in which a process `m_i` pings `k` target processes. If a target process `m_j` receives a ping, but fails to respond in a timely fashion, `m_i` asks a third process `m_l` to ping `m_j`. If `m_j` does not respond to either pings before the start of the next ping period, the suspicion sub-protocol is initiated for `m_j`: the process `m_i` marks `m_j` as suspicious and disseminates the update to the group. If no process disputes the status of `m_j` before the end of the suspicion period, through disseminating the appropriate status update, the group marks it as failed. The suspicion period is calculated from the protocol period, the number of processes in the group, and a small multiplier.
+At the start of every protocol period, processes run the basic SWIM sub-protocol, in which a process `m_i` pings `p` target processes. In the original SWIM paper, `p=1`. If a target process `m_j` receives a ping, but fails to respond in a timely fashion, `m_i` asks `k` unrelated processes to ping `m_j`. If `m_j` does not respond to either pings before the start of the next ping period, the suspicion sub-protocol is initiated for `m_j`: the process `m_i` marks `m_j` as suspicious and disseminates the update to the group. If no process disputes the status of `m_j` before the end of the suspicion period, through disseminating the appropriate status update, the group marks it as failed. The suspicion period is calculated from the protocol period, the number of processes in the group, and a small multiplier.
 
 To send all group members process status updates, SWIM implements piggybacked gossip dissemination, in which each process sends the updates to processes as extra data attached to the monitoring pings. As such, the method used to select which process to ping determines the time to disseminate updates to all group members.
 
