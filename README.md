@@ -43,9 +43,9 @@ For a more detailed description of the algorithm, please see the original [SWIM]
 In our implementation of SWIM, we improve on the round-robin shuffle selection method by imposing a topology using one of two distance metrics.
 
 
-## Software architecture
+## Design documents
 
-See [software specification][specifications] for a description and rationale for the design of `go-swim`.
+- [Data Structures][data-structure] describes the responsibilities and rationale for the data structures in `go-swim`.
 
 
 ## License
@@ -66,5 +66,5 @@ limitations under the License.
 
 
 [memberlist]: https://github.com/hashicorp/memberlist
-[specifications]: docs/software-specification.md
+[data-structure]: docs/data-structure.md
 [swim]: http://www.cs.cornell.edu/~asdas/research/dsn02-SWIM.pdf

@@ -1,6 +1,6 @@
-# Software Specification
+# Data Structures
 
-This document describes the software architecture for `go-swim` and the design rationale for each data structure and method, as it pertains to implementing the SWIM failure detector for rapid experimentation. In designing the software, I tried to localize knowledge as much as possible. For example, knowledge about how to contact a node is best encapsulated in the `Node` data structure. On the other hand, knowledge about how to select that node is better kept in a container for the nodes.
+This document describes the data structures for `go-swim` and the design rationale for each data structure and method, as it pertains to implementing the SWIM failure detector for rapid experimentation. In designing the data structures, I tried to localize knowledge as much as possible. For example, knowledge about how to contact a node is best encapsulated in the `Node` data structure. On the other hand, knowledge about how to select that node is better kept in a container for the nodes.
 
 The design of `go-swim` borrows heavily from HashiCorp's [`memberlist`][memberlist] implementation of SWIM.
 
@@ -24,10 +24,10 @@ While the first iterations of the software may only support using the first addr
 We also assume that, for the first iteration of the software, that node names are unique. While `memberlist` rejects new nodes with the same name as an existing node, our (eventual) support for multiple addresses doesn't have as clear of a solution.
 
 
-### `NodeState` for implementation-specific state information
+### `InternalNode` for implementation-specific state information
 
 ```go
-type NodeStateType int
+type NodeState int
 
 const (
     StateAlive NodeStateType = iota
@@ -35,12 +35,12 @@ const (
     StateDead
 )
 
-type NodeState {
+type InternalNode {
     Node
     InternalId       []byte        // Byte representation of the node name
     OrderingId       *big.Int      // Numeric representation of the internal ID
     Incarnation      uint32        // Last known incarnation number
-    State            NodeStateType // Current state
+    State            NodeState     // Current state
     StateLastUpdated time.Time     // Last time the state was updated
 }
 ```
@@ -49,13 +49,18 @@ type NodeState {
 
 `Incarnation`: A node's incarnation number is a global monotonically increasing integer. On joining the group, a node's incarnation number is initialized to `0`. It is incremented only when another node suspects it of failure and when a node refutes its failure, with both messages broadcast to the group using the dissemination component.
 
+`State`: The state describes the node's membership status in the group, as required of any failure detector.
 
-## `NodeSelectionList` interface and implementations for peer selection
+`StateLastUpdated`: The last update time for a node is used to detect when a node has not replied to a ping or refuted its suspicion status.
+
+
+## `NodeSelectionList` for peer selection
 
 ```go
 type NodeSelectionList interface {
     func Add(node *Node) error {}
     func Remove(node *Node) error {}
+    func Choose(nodes []*Node) ([]*Node, error) {}
     func Next() (*Node, error) {}
     func List() ([]*Node, error) {}
 }
@@ -76,7 +81,26 @@ type BucketSelectionList struct {
 }
 ```
 
-The `NodeSelectionList` interface defines generic methods for managing a list of nodes and choosing candidate nodes for pinging. The `ShuffleSelectionList` implements the round-robin shuffle method described in SWIM. The `BucketSelectionList` implements round-robin shuffle over buckets of sizes `ceil(n*(2/3)*(1/3)^i)` where `n` is the total number of nodes, `0 <= i < k` are the bucket numbers, and `k` is the number of nodes to ping during each protocol period.
+The `NodeSelectionList` interface defines generic methods for managing a list of nodes for the purpose of choosing candidate nodes for pinging. The `ShuffleSelectionList` implements the round-robin shuffle method described in SWIM. The `BucketSelectionList` implements round-robin shuffle over buckets of sizes `ceil(n*(2/3)*(1/3)^i)` where `n` is the total number of nodes, `0 <= i < k` are the bucket numbers, and `k` is the number of nodes to ping during each protocol period.
+
+
+## `AftershockTicker` for periodically pinging peers
+
+```go
+type AftershockTicker struct {
+    Period      time.Duration      // The duration between primary ticks
+    PhaseDelays []time.Duration    // The phase delays for aftershock ticks
+    C           <-chan time.Time   // The channel on which primary ticks are delivered
+    Q           []<-chan time.Time // The channels on which aftershock ticks are delivered
+}
+```
+
+The `AftershockTicker` implements a ticker that also delivers phase-shifted aftershock ticks. The ticker is used to coalesce related timeouts in the basic SWIM failure detection algorithm. The primary tick triggers the first round of `k` pings, followed by a second aftershock tick shifted by the algorithm timeout to check if any node need to be indirectly pinged. For example:
+
+```
+| Primary tick ------------>| Second aftershock tick
+| Ping k nodes              | Indirectly ping nodes if no reply received
+```
 
 - `Delegate`
     + `NodeFactory(name string, addrs []*net.Addr) (*NodeState, error)`
