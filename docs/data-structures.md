@@ -88,8 +88,8 @@ The `NodeSorter` reorders the given nodes in ascending order. This is not necess
 
 ```go
 type NodeSelectionList interface {
-    func Add(node *InternalNode) error {}
-    func Remove(node *InternalNode) error {}
+    func Add(...nodes []*InternalNode) error {}
+    func Remove(...nodes []*InternalNode) error {}
     func Choose(nodes []*InternalNode) ([]*InternalNode, error) {}
     func Next() (*InternalNode, error) {}
     func List() ([]*InternalNode, error) {}
@@ -102,7 +102,7 @@ type ShuffleSelectionList struct {
 }
 
 // http://en.wikipedia.org/wiki/Fisher–Yates_shuffle
-func (l *ShuffleSelectionList) Shuffle() {}
+func (l *ShuffleSelectionList) shuffle() {}
 
 // Implements NodeSelectionList
 type BucketSelectionList struct {
@@ -110,6 +110,10 @@ type BucketSelectionList struct {
     sortedNodes []*InternalNode         // List of nodes sorted by OrderingId
     buckets     []*ShuffleSelectionList // List of buckets
 }
+
+// Replace the internal list of sorted nodes, updating buckets as needed.
+// Primarily used to avoid double-sorting with NeighborhoodSelectionList.
+func (l *BucketSelectionList) UpdateInPlace(sortedNodes []*InternalNode) error {}
 
 // Implements NodeSelectionList
 type NeighborhoodSelectionList struct {
