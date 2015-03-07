@@ -9,19 +9,19 @@ The design of `go-swim` borrows heavily from HashiCorp's [`memberlist`][memberli
 
 ```go
 type Node struct {
-    Name       string      // User-provided node name
-    Addrs      []*net.Addr // List of addresses assigned to the node
-    Meta       []byte      // Metadata from the delegate for this node.
+    Id    []byte      // Node ID
+    Addrs []*net.Addr // List of addresses assigned to the node
+    Meta  []byte      // Metadata from the delegate for this node.
 }
 ```
 
 Internally, SWIM processes are referred to as nodes. The nodes are the basic unit of information in that without them, there would be no use for SWIM. The difference between `Node` and `NodeState` is that the former is returned to end-client applications, while the latter exposes internal properties intended for delegate handlers.
 
-`Name` and `Addrs`: Nodes minimally maintain the user-provided node name and a list of network addresses at which the node may be reached.
+`Id` and `Addrs`: Nodes minimally maintain the user-provided node ID and a list of network addresses at which the node may be reached. All node IDs must have the same byte length.
 
 While the first iterations of the software may only support using the first address in the list, future revisions should at least be able to contact nodes using more than one network address. This is a likely scenario when nodes are mobile (e.g. cell phones) or when nodes are attached to more than one disjoint networks (e.g. a primary network and a backup network).
 
-We also assume that, for the first iteration of the software, that node names are unique. While `memberlist` rejects new nodes with the same name as an existing node, our (eventual) support for multiple addresses doesn't have as clear of a solution.
+We also assume that, for the first iteration of the software, that node IDs are unique. While `memberlist` rejects new nodes with the same name as an existing node, our (eventual) support for multiple addresses doesn't have as clear of a solution.
 
 
 ### `InternalNode` for internal state information
@@ -30,22 +30,21 @@ We also assume that, for the first iteration of the software, that node names ar
 type NodeState int
 
 const (
-    StateAlive NodeStateType = iota
-    StateSuspect
-    StateDead
+    NodeAlive NodeState = iota
+    NodeSuspect
+    NodeDead
 )
 
 type InternalNode {
     Node
-    InternalId       []byte        // Byte representation of the node name
-    OrderingId       []byte        // ID representation used for ordering nodes
+    SortValue        interface{}   // For the sorting implementation
     Incarnation      uint32        // Last known incarnation number
     State            NodeState     // Current state
     StateLastUpdated time.Time     // Last time the state was updated
 }
 ```
 
-`InternalId` and `OrderingId`: To better support the Chord and Kademlia distance metrics used in ordering the nodes, we maintain an internal byte representation of the user-provided node name (e.g. a cryptographic hash of the node name) and a numeric representation of the node name.
+`SortValue`: The `SortValue` field is used to cache the Kademlia XOR metric. Other sorting implementations may use this field as needed.
 
 `Incarnation`: A node's incarnation number is a global monotonically increasing integer. On joining the group, a node's incarnation number is initialized to `0`. It is incremented only when another node suspects it of failure and when a node refutes its failure, with both messages broadcast to the group using the dissemination component.
 
@@ -54,34 +53,17 @@ type InternalNode {
 `StateLastUpdated`: The last update time for a node is used to detect when a node has not replied to a ping or refuted its suspicion status.
 
 
-### `NodeVisitor` for populating node fields
-
-```go
-type NodeVisitor func(localNode *InternalNode, targetNode *InternalNode) (*InternalNode, error)
-
-// Implementations of NodeVisitor
-func HashNodeVisitor(hash func() hash.Hash) NodeVisitor {}
-func XorNodeVisitor(localNode *InternalNode, targetNode *InternalNode) (*InternalNode, error) {}
-```
-
-The `NodeVisitor` is responsible for updating an `InternalNode` for the given local `InternalNode`, modifying the relevant `InternalNode` fields as necessary. For example, it is used to implement the Chord and Kademlia distance metrics.
-
-`HashNodeVisitor` creates a node visitor that uses the given hash function to set the `InternalId` field of the target `InternalNode`. It is used for generating the "random" IDs needed by the Chord fingers and Kademlia XOR metric.
-
-`XorNodeVisitor` sets the `OrderingId` by XORing the local and target node `InternalIds`.
-
-
 ### `NodeSorter` for sorting nodes
 
 ```go
 type NodeSorter func(nodes []*InternalNode) error
 
 // Implementations of NodeSorter
-func OrderingIdNodeSorter(nodes []*InternalNode) error {}
 func ChordFingerNodeSorter(nodes []*InternalNode) error {}
+func XorNodeSorter(nodes []*InternalNode) error {}
 ```
 
-The `NodeSorter` reorders the given nodes in ascending order. This is not necessarily the simple comparison-based sort used by `OrderingIdNodeSorter`. The `ChordFingerNodeSorter`, for example, orders the nodes based on the global ordering provided by `OrderingIdNodeSorter`.
+The `NodeSorter` reorders the given nodes in ascending order according to an implementation-specific distance metric. The sorting is not necessarily comparison-based. The `ChordFingerNodeSorter`, for example, orders the nodes based on the global lexicographical ordering of the node IDs. The `XorNodeSorter`, on the other hand, uses comparison-based sorting over the exclusive or (XOR) of the local node ID and the target node IDs. The local node is guaranteed to be the first node in the given list and must remain in that position.
 
 
 ## `NodeSelectionList` for peer selection
@@ -116,7 +98,7 @@ type BucketSelectionList struct {
 func (l *BucketSelectionList) UpdateInPlace(sortedNodes []*InternalNode) error {}
 
 // Implements NodeSelectionList
-type NeighborhoodSelectionList struct {
+type PrioritySelectionList struct {
     k           uint                 // Number of regional buckets to maintain
     r           uint                 // Size of the neighborhood
     s           uint                 // Number of nodes to select from the neighborhood
@@ -126,7 +108,7 @@ type NeighborhoodSelectionList struct {
 }
 ```
 
-The `NodeSelectionList` interface defines generic methods for managing a list of nodes for the purpose of choosing candidate nodes for pinging. The `ShuffleSelectionList` implements the round-robin shuffle method described in SWIM. The `BucketSelectionList` implements round-robin shuffle over buckets of sizes `ceil(n*(2/3)*(1/3)^i)` where `n` is the total number of nodes, `0 <= i < k` are the bucket numbers, and `k` is the number of nodes to ping during each protocol period. The `NeighborhoodSelectionList` selects `s` nodes from the `r` closest neighboring nodes and the rest from the regional node list.
+The `NodeSelectionList` interface defines generic methods for managing a list of nodes for the purpose of choosing candidate nodes for pinging. The `ShuffleSelectionList` implements the round-robin shuffle method described in SWIM. The `BucketSelectionList` implements round-robin shuffle over buckets of sizes `ceil(n*(2/3)*(1/3)^i)` where `n` is the total number of nodes, `0 <= i < p` are the bucket numbers, and `p` is the number of nodes to ping during each protocol period. The `PrioritySelectionList` selects `s` nodes from the `r` closest neighboring nodes and the rest from the regional node list.
 
 
 ## `AftershockTicker` for periodically pinging peers
@@ -140,11 +122,11 @@ type AftershockTicker struct {
 }
 ```
 
-The `AftershockTicker` implements a ticker that also delivers phase-shifted aftershock ticks. The ticker is used to coalesce related timeouts in the basic SWIM failure detection algorithm. The primary tick triggers the first round of `k` pings, followed by a second aftershock tick shifted by the algorithm timeout to check if any node need to be indirectly pinged. For example:
+The `AftershockTicker` implements a ticker that also delivers phase-shifted aftershock ticks. The ticker is used to coalesce related timeouts in the basic SWIM failure detection algorithm. The primary tick triggers the first round of `p` pings, followed by a second aftershock tick shifted by the algorithm timeout to check if any node need to be indirectly pinged. For example:
 
 ```
 | Primary tick ------------>| Second aftershock tick
-| Ping k nodes              | Indirectly ping nodes if no reply received
+| Ping `p` nodes            | Use `k` nodes for indirect pings, if needed
 ```
 
 
