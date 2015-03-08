@@ -8,10 +8,12 @@ The design of `go-swim` borrows heavily from HashiCorp's [`memberlist`][memberli
 ## `Node` as the fundamental unit of information
 
 ```go
+type Id []byte
+
 type Node struct {
-    Id    []byte   // Node ID
-    Addrs []string // List of addresses assigned to the node
-    Meta  []byte   // Metadata from the delegate for this node
+    Id    Id          // Node ID
+    Addrs []string    // List of addresses assigned to the node
+    Meta  interface{} // Metadata
 }
 ```
 
@@ -139,7 +141,7 @@ type OutgoingPacket {
 }
 
 type IncomingPacket {
-    From     []byte
+    From     Id
     Messages []interface{}
 }
 
@@ -166,13 +168,13 @@ The `Marshal()` and `MaxPacketSize()` methods are used to limit the size of tran
 
 ```go
 type MessageHeader struct {
-    From  []byte
+    From  Id
     Stamp uint32 // Message sequence or incarnation
 }
 
 type PingMessage struct {
     MessageHeader
-    To []byte
+    To Id
 }
 
 type ProbeMessage struct {
@@ -191,18 +193,18 @@ type AliveMessage struct {
 
 type SuspectMessage struct {
     MessageHeader
-    Id []byte
+    Id Id
 }
 
 type DeadMessage struct {
     MessageHeader
-    Id []byte
+    Id Id
 }
 
 type UserMessage struct {
     MessageHeader
-    Id   []byte
-    Meta []byte
+    Id   Id
+    Data interface{}
 }
 ```
 
@@ -275,13 +277,77 @@ func (m *Mailman) Deliver(packet IncomingPacket) error
 
 `MailHandler` implements the chain-of-responsibility pattern. If a `MessageHandler` is unable to handle a message, it should call the next handler.
 
-- `MemberList`
-    + `Conn *net.PacketConn`
-    + `timer time.Interval`
-    + `bucketList BucketList`
-    + `Probe()`
-    + `Start()`
-    + `Stop()`
+
+## `MemberList` implements SWIM
+
+```go
+type Options struct {
+    Id   Id          // Local node ID
+    Meta interface{} // Initial metadata for local node
+
+    Sorter NodeSorter // Node sorting implementation
+
+    Transport Transport // Transport implementation
+
+    RetransmitMult uint // Retransmits = RetransmitMult * log(N+1)
+    SuspicionMult  uint // SuspicionTimeout = SuspicionMult * log(N+1) * ProbeInterval
+
+    IndirectProbes uint // Number of indirect probes
+
+    ProbeInterval time.Duration // Time between protocol periods
+    ProbeTimeout  time.Duration // Timeout after a direct probe before using indirect probes
+
+    RegionCount  uint // Number of regional buckets to maintain
+    RegionProbes uint // Number of regional probes per protocol period
+
+    NeighborCount  uint // Number of nodes in the neighborhood
+    NeighborProbes uint // Number of neighborhood probes per protocol period
+}
+
+type MemberList struct {
+    sequence    uint32
+    incarnation uint32
+
+    regionProbes   uint
+    neighborProbes uint
+
+    UserMessages <-chan interface{} // Received user messages are queued here
+
+    nodeSorter        NodeSorter
+    nodeSelectionList NodeSelectionList
+    broadcastQueue    BroadcastQueue
+
+    transport         Transport
+    mailHandler       MailHandler
+
+    ticker            AftershockTicker
+}
+
+// Create a new MemberList.
+func New(options Options) (*MemberList, error) {}
+
+// Broadcast a user message.
+func (l *MemberList) Broadcast(data interface{}) error {}
+
+// Get the local node.
+func (l *MemberList) LocalNode() *Node {}
+
+// Set the local node metadata and enqueue a broadcast update.
+func (l *MemberList) SetMeta(meta interface{}) error {}
+
+// Start the failure detector.
+func (l *MemberList) Start() error {}
+
+// Stop the failure detector.
+func (l *MemberList) Stop() error {}
+
+// Broadcast the local node's state. The failure detector must have been
+// started.
+func (l *MemberList) Update() error {}
+```
+
+`MemberList` is exposes the primary user-facing API. It implements the modified SWIM failure detector described in the [README][readme]. Setting `regionCount=1`, `regionProbes=1`, `neighborCount=0`, and `neighborProbes=0` results in the original SWIM behavior.
 
 
 [memberlist]: https://github.com/hashicorp/memberlist
+[readme]: ../README.md
