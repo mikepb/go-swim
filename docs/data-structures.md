@@ -149,7 +149,7 @@ type Transport interface {
 }
 ```
 
-`Transport` is responsible for sending messages to other nodes and maintaining an inbox of messages received from other nodes. This object is meant to separate the transport and control panes (https://github.com/hashicorp/memberlist/issues/21) and to ease the implementation of an in-process network simulator. The recognized message structures are described in the next section. The program will panic if it receives an unrecognized message structure.
+`Transport` is responsible for sending messages to other nodes and maintaining an inbox of messages received from other nodes. This object is meant to separate the transport and control panes (https://github.com/hashicorp/memberlist/issues/21) and to ease the implementation of an in-process network simulator. The recognized message structures are described in the next section. Unrecognized messages are passed to the delegate, or the program will panic if no delegate is configured.
 
 
 ## `Message` for describing network messages
@@ -213,11 +213,38 @@ These structures describe the messages sent over the transport between peers. `H
 The `Ping` message is sent to probe a node's status. The `Probe` message is sent to third-party nodes to indirectly probe an unresponsive node. The `Ack` message is returned by a directly probed node as well as the intermediate node serving an indirect probe.
 
 Multiple messages are bundled together in a packet and sent as a single addressed unit. See the previous section on the `Transport` interface for more details.
+
+
+## `BroadcastQueue` for piggybacking broadcasts
+
+```go
+type Broadcast interface {
+    Invalidates(b Broadcast) bool
+    Message() interface{}
+    Done()
+}
+
+type limitedBroadcast {
+    transmits int       // Number of transmissions attempted
+    b         Broadcast // The broadcast message
+}
+
+type priorityBroadcasts []*limitedBroadcast
+
+type BroadcastQueue struct {
+    queue priorityBroadcasts
+}
+
+func (q *BroadcastQueue) Push(b Broadcast) {}
+func (q *BroadcastQueue) Retrieve(limit, retransmitLimit int) {}
+```
+
+
 - `MemberList`
     + `Conn *net.PacketConn`
     + `timer time.Interval`
     + `bucketList BucketList`
-    + `Ping()`
+    + `Probe()`
     + `Start()`
     + `Stop()`
 
