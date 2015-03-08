@@ -144,12 +144,15 @@ type IncomingPacket {
 }
 
 type Transport interface {
+    Marshal(message []interface{}) (MarshalledMessage, error)
     Outbox() chan-> OutgoingPacket
     Inbox() <-chan IncomingPacket
 }
 ```
 
 `Transport` is responsible for sending messages to other nodes and maintaining an inbox of messages received from other nodes. This object is meant to separate the transport and control panes (https://github.com/hashicorp/memberlist/issues/21) and to ease the implementation of an in-process network simulator. The recognized message structures are described in the next section. Unrecognized messages are passed to the delegate, or the program will panic if no delegate is configured.
+
+The `Marshal()` method is used to limit the size of transmitted packets, especially useful when attaching broadcast messages.
 
 
 ## `Message` for describing network messages
@@ -206,6 +209,12 @@ type UserMessage struct {
     Id   []byte
     Meta []byte
 }
+
+type MarshalledMessage struct {
+    Message interface{}
+    Data    []byte
+    Size    int
+}
 ```
 
 These structures describe the messages sent over the transport between peers. `Header` describes the message's sender and a numerical `Stamp` that is interpreted either as the `Sequence` number of the originating node (`Ping`, `Probe`, and `Ack`) or as the `Incarnation` number of the target node (`Alive`, `Suspect`, `Dead`, and `Meta`).
@@ -214,13 +223,24 @@ The `Ping` message is sent to probe a node's status. The `Probe` message is sent
 
 Multiple messages are bundled together in a packet and sent as a single addressed unit. See the previous section on the `Transport` interface for more details.
 
+The `MarshalledMessage` structure is returned by the `Marshall()` method described in the `Transport` section. Its purpose is to cache marshalling operations on messages used to calculate the message size for limiting the size of transmitted packets. It is an optimization; the representation sent to other nodes is identical to the original message.
+
 
 ## `BroadcastQueue` for piggybacking broadcasts
 
 ```go
 type Broadcast interface {
+    // Determine if another broadcast invalidates this one.
     Invalidates(b Broadcast) bool
+
+    // Get the message data.
     Message() interface{}
+
+    // Get an estimate of the message size.
+    Size() int
+
+    // Invoked when the broadcast reaches its retransmission limit or is
+    // invalidated by another broadcast.
     Done()
 }
 
@@ -229,16 +249,32 @@ type limitedBroadcast {
     b         Broadcast // The broadcast message
 }
 
+// Implements the sort.Interface methods
 type priorityBroadcasts []*limitedBroadcast
 
 type BroadcastQueue struct {
+    Limit int // Maximum number of queued broadcasts before blocking
     queue priorityBroadcasts
 }
 
+// Push a broadcast onto the queue, blocking if Limit > 0 and the queue is
+// full.
 func (q *BroadcastQueue) Push(b Broadcast) {}
-func (q *BroadcastQueue) Retrieve(limit, retransmitLimit int) {}
+
+// Match broadcasts to the given constraints.
+//
+// limit - maximum total byte size for returned broadcasts
+// overhead - a per-message overhead to add for each broadcast, in bytes
+// transmits - maximum number of transmissions per broadcast
+func (q *BroadcastQueue) Match(limit, overhead, transmits int) []interface{} {}
+
+// Get the number of queued broadcasts
+func (q *BroadcastQueue) Size() int {}
 ```
 
+The `BroadcastQueue` manages a priority list of pending broadcasts, with broadcasts with fewer transmissions receiving higher priority. When broadcasts have the same priority, broadcasts with smaller size are given priority to increase the number of broadcasts transmitted per matching.
+
+The design of `BroadcastQueue` is based on the memberlist `TransmitLimitedQueue`. The transmission limit is given as an argument to `Match()` instead of as a delegate function to enforce separation of concerns. Likewise, instead of implementing a `Prune()` method to prevent unbounded queue size, when `Limit > 0`, `BroadcastQueue` instead blocks `Push()` when the queue is full. This has the effect of providing backflow control for throttling the broadcast mechanism.
 
 - `MemberList`
     + `Conn *net.PacketConn`
