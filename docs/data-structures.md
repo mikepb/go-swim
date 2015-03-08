@@ -332,21 +332,41 @@ func (l *MemberList) Broadcast(data interface{}) error {}
 // Get the local node.
 func (l *MemberList) LocalNode() *Node {}
 
+// Get a list of known live nodes.
+func (l *MemberList) Members() []*Node {}
+
+// Get an estimate of the number of known live nodes.
+func (l *MemberList) MemberCount() int {}
+
 // Set the local node metadata and enqueue a broadcast update.
 func (l *MemberList) SetMeta(meta interface{}) error {}
 
 // Start the failure detector.
 func (l *MemberList) Start() error {}
 
-// Stop the failure detector.
+// Gracefully stop the failure detector.
 func (l *MemberList) Stop() error {}
 
-// Broadcast the local node's state. The failure detector must have been
-// started.
-func (l *MemberList) Update() error {}
+// Broadcast the local node's state, blocking until the message has been 
+// sent to a member of the group, or until the timeout expires.
+//
+// The failure detector must have been started before calling this method.
+func (l *MemberList) Update(timeout time.Timeout) error {}
+
+// Broadcast a join intent, blocking until the message has been sent to all
+// the given addresses.
+//
+// The failure detector must have been started before calling this method.
+func (l *MemberList) Join(addrs []string) error {}
+
+// Broadcast a leave intent, blocking until the message has been sent to a
+// member of the group, or until the timeout expires.
+//
+// The failure detector must have been started before calling this method.
+func (l *MemberList) Leave(timeout time.Timeout) error {}
 ```
 
-`MemberList` is exposes the primary user-facing API. It implements the modified SWIM failure detector described in the [README][readme]. Setting `regionCount=1`, `regionProbes=1`, `neighborCount=0`, and `neighborProbes=0` results in the original SWIM behavior.
+`MemberList` is exposes the primary user-facing API. It implements the modified SWIM failure detector described in the [README][readme]. Setting `regionCount=1`, `regionProbes=1`, `neighborCount=0`, and `neighborProbes=0` results in the original SWIM behavior. The API is based on the [memberlist][] structure of the same name.
 
 
 [memberlist]: https://github.com/hashicorp/memberlist
