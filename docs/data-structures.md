@@ -158,18 +158,6 @@ The `Marshal()` method is used to limit the size of transmitted packets, especia
 ## `Message` for describing network messages
 
 ```go
-type MessageType uint8
-
-const (
-    PingMessageType MessageType = iota // A direct probe request
-    ProbeMessageType                   // An indirect probe request
-    AckMessageType                     // A probe response
-    AliveMessageType                   // An alive message
-    SuspectMessageType                 // A suspect message
-    DeadMessageType                    // A dead message
-    UserMessageType                    // User message for the delegate
-)
-
 type MessageHeader struct {
     From  []byte
     Stamp uint32 // Message sequence or incarnation
@@ -275,6 +263,21 @@ func (q *BroadcastQueue) Size() int {}
 The `BroadcastQueue` manages a priority list of pending broadcasts, with broadcasts with fewer transmissions receiving higher priority. When broadcasts have the same priority, broadcasts with smaller size are given priority to increase the number of broadcasts transmitted per matching.
 
 The design of `BroadcastQueue` is based on the memberlist `TransmitLimitedQueue`. The transmission limit is given as an argument to `Match()` instead of as a delegate function to enforce separation of concerns. Likewise, instead of implementing a `Prune()` method to prevent unbounded queue size, when `Limit > 0`, `BroadcastQueue` instead blocks `Push()` when the queue is full. This has the effect of providing backflow control for throttling the broadcast mechanism.
+
+
+## `MailHandler` for incoming messages
+
+```go
+type HandlerFunc func(message interface{}, next HandlerFunc) error
+
+type MessageHandler struct {
+    Handlers []MessageHandler
+}
+
+func (m *Mailman) Deliver(packet IncomingPacket) error
+```
+
+`MailHandler` implements the chain-of-responsibility pattern. If a `MessageHandler` is unable to handle a message, it should call the next handler.
 
 - `MemberList`
     + `Conn *net.PacketConn`
