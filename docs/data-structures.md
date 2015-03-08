@@ -9,9 +9,9 @@ The design of `go-swim` borrows heavily from HashiCorp's [`memberlist`][memberli
 
 ```go
 type Node struct {
-    Id    []byte      // Node ID
-    Addrs []*net.Addr // List of addresses assigned to the node
-    Meta  []byte      // Metadata from the delegate for this node.
+    Id    []byte   // Node ID
+    Addrs []string // List of addresses assigned to the node
+    Meta  []byte   // Metadata from the delegate for this node
 }
 ```
 
@@ -27,7 +27,7 @@ We also assume that, for the first iteration of the software, that node IDs are 
 ### `InternalNode` for internal state information
 
 ```go
-type NodeState int
+type NodeState uint8
 
 const (
     NodeAlive NodeState = iota
@@ -37,14 +37,12 @@ const (
 
 type InternalNode {
     Node
-    SortValue        interface{}   // For the sorting implementation
     Incarnation      uint32        // Last known incarnation number
     State            NodeState     // Current state
     StateLastUpdated time.Time     // Last time the state was updated
+    SortValue        interface{}   // For the sorting implementation
 }
 ```
-
-`SortValue`: The `SortValue` field is used to cache the Kademlia XOR metric. Other sorting implementations may use this field as needed.
 
 `Incarnation`: A node's incarnation number is a global monotonically increasing integer. On joining the group, a node's incarnation number is initialized to `0`. It is incremented only when another node suspects it of failure and when a node refutes its failure, with both messages broadcast to the group using the dissemination component.
 
@@ -52,18 +50,20 @@ type InternalNode {
 
 `StateLastUpdated`: The last update time for a node is used to detect when a node has not replied to a ping or refuted its suspicion status.
 
+`SortValue`: The `SortValue` field is used to cache the Kademlia XOR metric. Other sorting implementations may use this field as needed.
+
 
 ### `NodeSorter` for sorting nodes
 
 ```go
-type NodeSorter func(nodes []*InternalNode) error
+type NodeSorter func(nodes []*InternalNode, localNode *InternalNode) error
 
 // Implementations of NodeSorter
-func ChordFingerNodeSorter(nodes []*InternalNode) error {}
-func XorNodeSorter(nodes []*InternalNode) error {}
+func ChordFingerNodeSorter(nodes []*InternalNode, localNode *InternalNode) error {}
+func XorNodeSorter(nodes []*InternalNode, localNode *InternalNode) error {}
 ```
 
-The `NodeSorter` reorders the given nodes in ascending order according to an implementation-specific distance metric. The sorting is not necessarily comparison-based. The `ChordFingerNodeSorter`, for example, orders the nodes based on the global lexicographical ordering of the node IDs. The `XorNodeSorter`, on the other hand, uses comparison-based sorting over the exclusive or (XOR) of the local node ID and the target node IDs. The local node is guaranteed to be the first node in the given list and must remain in that position.
+The `NodeSorter` reorders the given nodes in ascending order according to an implementation-specific distance metric. The sorting is not necessarily comparison-based. The `ChordFingerNodeSorter`, for example, orders the nodes based on the global lexicographical ordering of the node IDs. The `XorNodeSorter`, on the other hand, uses comparison-based sorting over the exclusive or (XOR) of the local node ID and the target node IDs.
 
 
 ## `NodeSelectionList` for peer selection
@@ -130,6 +130,89 @@ The `AftershockTicker` implements a ticker that also delivers phase-shifted afte
 ```
 
 
+## `Transport` for sending and receiving messages
+
+```go
+type OutgoingPacket {
+    To       *Node
+    Messages []interface{}
+}
+
+type IncomingPacket {
+    From     []byte
+    Messages []interface{}
+}
+
+type Transport interface {
+    Outbox() chan-> OutgoingPacket
+    Inbox() <-chan IncomingPacket
+}
+```
+
+`Transport` is responsible for sending messages to other nodes and maintaining an inbox of messages received from other nodes. This object is meant to separate the transport and control panes (https://github.com/hashicorp/memberlist/issues/21) and to ease the implementation of an in-process network simulator. The recognized message structures are described in the next section. The program will panic if it receives an unrecognized message structure.
+
+
+## `Message` for describing network messages
+
+```go
+type MessageType uint8
+
+const (
+    PingMessage MessageType = iota // A direct probe request
+    ProbeMessage                   // An indirect probe request
+    AckMessage                     // A probe response
+    AliveMessage                   // An alive message
+    SuspectMessage                 // A suspect message
+    DeadMessage                    // A dead message
+    MetaMessage                    // Metadata message for the delegate
+)
+
+type Header struct {
+    From  []byte
+    Stamp uint32 // Message sequence or incarnation
+}
+
+type Ping struct {
+    Header
+    To []byte
+}
+
+type Probe struct {
+    Ping
+    Addrs []string
+}
+
+type Ack struct {
+    Header
+}
+
+type Alive struct {
+    Header
+    Node
+}
+
+type Suspect struct {
+    Header
+    Id []byte
+}
+
+type Dead struct {
+    Header
+    Id []byte
+}
+
+type Meta struct {
+    Header
+    Id   []byte
+    Meta []byte
+}
+```
+
+These structures describe the messages sent over the transport between peers. `Header` describes the message's sender and a numerical `Stamp` that is interpreted either as the `Sequence` number of the originating node (`Ping`, `Probe`, and `Ack`) or as the `Incarnation` number of the target node (`Alive`, `Suspect`, `Dead`, and `Meta`).
+
+The `Ping` message is sent to probe a node's status. The `Probe` message is sent to third-party nodes to indirectly probe an unresponsive node. The `Ack` message is returned by a directly probed node as well as the intermediate node serving an indirect probe.
+
+Multiple messages are bundled together in a packet and sent as a single addressed unit. See the previous section on the `Transport` interface for more details.
 - `MemberList`
     + `Conn *net.PacketConn`
     + `timer time.Interval`
