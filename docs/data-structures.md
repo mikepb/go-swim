@@ -158,51 +158,51 @@ type Transport interface {
 type MessageType uint8
 
 const (
-    PingMessage MessageType = iota // A direct probe request
-    ProbeMessage                   // An indirect probe request
-    AckMessage                     // A probe response
-    AliveMessage                   // An alive message
-    SuspectMessage                 // A suspect message
-    DeadMessage                    // A dead message
-    MetaMessage                    // Metadata message for the delegate
+    PingMessageType MessageType = iota // A direct probe request
+    ProbeMessageType                   // An indirect probe request
+    AckMessageType                     // A probe response
+    AliveMessageType                   // An alive message
+    SuspectMessageType                 // A suspect message
+    DeadMessageType                    // A dead message
+    UserMessageType                    // User message for the delegate
 )
 
-type Header struct {
+type MessageHeader struct {
     From  []byte
     Stamp uint32 // Message sequence or incarnation
 }
 
-type Ping struct {
-    Header
+type PingMessage struct {
+    MessageHeader
     To []byte
 }
 
-type Probe struct {
+type ProbeMessage struct {
     Ping
     Addrs []string
 }
 
-type Ack struct {
-    Header
+type AckMessage struct {
+    MessageHeader
 }
 
-type Alive struct {
-    Header
+type AliveMessage struct {
+    MessageHeader
     Node
 }
 
-type Suspect struct {
-    Header
+type SuspectMessage struct {
+    MessageHeader
     Id []byte
 }
 
-type Dead struct {
-    Header
+type DeadMessage struct {
+    MessageHeader
     Id []byte
 }
 
-type Meta struct {
-    Header
+type UserMessage struct {
+    MessageHeader
     Id   []byte
     Meta []byte
 }
