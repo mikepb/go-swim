@@ -185,7 +185,7 @@ When writing a compatibility layer with existing [memberlist][] clients, transpo
 ```go
 type MessageHeader struct {
     From  Id
-    Stamp uint32 // Message sequence or incarnation
+    Sequence uint32 // Sequence number at sending node
 }
 
 type PingMessage struct {
@@ -205,16 +205,19 @@ type AckMessage struct {
 type AliveMessage struct {
     MessageHeader
     Node
+    Incarnation uint32 // Incarnation number of the node
 }
 
 type SuspectMessage struct {
     MessageHeader
     Id Id
+    Incarnation uint32 // Incarnation number of the node
 }
 
 type DeadMessage struct {
     MessageHeader
     Id Id
+    Incarnation uint32 // Incarnation number of the node
 }
 
 type UserMessage struct {
@@ -224,7 +227,7 @@ type UserMessage struct {
 }
 ```
 
-These structures describe the messages sent over the transport between peers. `Header` describes the message's sender and a numerical `Stamp` that is interpreted either as the `Sequence` number of the originating node (`Ping`, `Probe`, and `Ack`) or as the `Incarnation` number of the target node (`Alive`, `Suspect`, `Dead`, and `Meta`).
+These structures describe the messages sent over the transport between peers. `Header` describes the message's sender and the `Sequence` number at the sending node. The `Incarnation` number in the `Alive`, `Suspect`, and `Dead` nodes serve as vector clocks on the target node state.
 
 The `Ping` message is sent to probe a node's status. The `Probe` message is sent to third-party nodes to indirectly probe an unresponsive node. The `Ack` message is returned by a directly probed node as well as the intermediate node serving an indirect probe.
 
