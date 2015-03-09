@@ -12,7 +12,7 @@ type Id []byte
 
 type Node struct {
     Id    Id          // Node ID
-    Addrs []string    // List of addresses assigned to the node
+    Addrs []*net.Addr // List of addresses assigned to the node
     Meta  interface{} // Metadata
 }
 ```
@@ -143,8 +143,7 @@ type OutgoingPacket {
 }
 
 type IncomingPacket {
-    From     Id
-    Messages []interface{}
+    Messages   []interface{}
 }
 
 type Transport interface {
@@ -165,7 +164,7 @@ When writing a compatibility layer with existing [memberlist][] clients, transpo
 
 ```go
 type MessageHeader struct {
-    From  Id
+    From     Id
     Sequence uint32 // Sequence number at sending node
 }
 
@@ -182,13 +181,19 @@ type AckMessage struct {
 
 type IndirectPingMessage struct {
     MessageHeader
-    To Id
+    To     Id
     Target Id
-    Addrs []string
+    Addrs  []*net.Addr
 }
 
 type IndirectAckMessage struct {
     MessageHeader
+}
+
+type JoinMessage struct {
+    MessageHeader
+    Node
+    Incarnation uint32 // Incarnation number of the node
 }
 
 type AliveMessage struct {
@@ -199,13 +204,13 @@ type AliveMessage struct {
 
 type SuspectMessage struct {
     MessageHeader
-    Id Id
+    Id          Id
     Incarnation uint32 // Incarnation number of the node
 }
 
 type DeadMessage struct {
     MessageHeader
-    Id Id
+    Id          Id
     Incarnation uint32 // Incarnation number of the node
 }
 
@@ -219,6 +224,8 @@ type UserMessage struct {
 These structures describe the messages sent over the transport between peers. `Header` describes the message's sender and the `Sequence` number at the sending node. The `Incarnation` number in the `Alive`, `Suspect`, and `Dead` nodes serve as vector clocks on the target node state.
 
 The `Ping` message is sent to probe a node's status. The `IndirectPing` message is sent to third-party nodes to indirectly probe an unresponsive node. The `Ack` message is returned by a directly probed node. The `IndirectAck` is returned by the intermediate node serving an indirect probe. The `LocalTime` field in`Ping` and `Ack` contain the sending node's local time and are used to estimate the round-trip time.
+
+The `AliveMessage`, `SuspectMessage`, and `DeadMessage` messages are rebroadcast by receiving nodes up to `RetransmitMult * log(N+1)` times. Messages that have an incarnation number less than the last known incarnation number for the respective nodes are not rebroadcast. The `JoinMessage` is interpreted as an `AliveMessage` by receiving nodes and additionally instructs the receiving nodes to send an `AliveMessage` describing itself to the sender.
 
 Multiple messages are bundled together in a packet and sent as a single addressed unit. See the previous section on the `Transport` interface for more details.
 
@@ -401,7 +408,7 @@ func (l *MemberList) Update(timeout time.Timeout) error {}
 // the given addresses.
 //
 // The failure detector must have been started before calling this method.
-func (l *MemberList) Join(addrs []string) error {}
+func (l *MemberList) Join(addrs []*net.Addr) error {}
 
 // Broadcast a leave intent, blocking until the message has been sent to a
 // member of the group, or until the timeout expires.
