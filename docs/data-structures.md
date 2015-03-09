@@ -40,17 +40,20 @@ const (
 type InternalNode {
     Node
     Incarnation      uint32        // Last known incarnation number
+    LastSequenceSeen uint32        // Last sequence in which a message was received
+    LastSequenceSent uint32        // Last sequence in which a message was sent
     State            NodeState     // Current state
-    StateLastUpdated time.Time     // Last time the state was updated
     SortValue        interface{}   // For the sorting implementation
 }
 ```
 
 `Incarnation`: A node's incarnation number is a global monotonically increasing integer. On joining the group, a node's incarnation number is initialized to `0`. It is incremented only when another node suspects it of failure and when a node refutes its failure, with both messages broadcast to the group using the dissemination component.
 
-`State`: The state describes the node's membership status in the group, as required of any failure detector.
+`LastSequenceSeen`: The last seen sequence number corresponds to the last protocol period in which a message from the node was received. It is used to detect when a node has not replied to a ping or refuted its suspicion status.
 
-`StateLastUpdated`: The last update time for a node is used to detect when a node has not replied to a ping or refuted its suspicion status.
+`LastSequenceSent`: The last sent sequence number corresponds to the last protocol period in which a message was sent to the node. This is used to limit the number of messages sent to any given node within a protocol period.
+
+`State`: The state describes the node's membership status in the group, as required of any failure detector.
 
 `SortValue`: The `SortValue` field is used to cache the Kademlia XOR metric. Other sorting implementations may use this field as needed.
 
@@ -270,15 +273,64 @@ type HandlerFunc func(message interface{}, next HandlerFunc) error
 
 type MessageHandler struct {
     Handlers []MessageHandler
+    stop     chan struct{}
 }
 
+// Start accepting packets, returning on error.
+func (m *Mailman) Accept(packets <-chan IncomingPacket) error
+
+// Deliver a single packet.
 func (m *Mailman) Deliver(packet IncomingPacket) error
+
+// Stop accepting packets.
+func (m *Mailman) Stop() error
 ```
 
 `MailHandler` implements the chain-of-responsibility pattern. If a `MessageHandler` is unable to handle a message, it should call the next handler.
 
 
-## `MemberList` implements SWIM
+## `FailureDetector` implements SWIM
+
+```go
+type FailureDetector struct {
+    sequence    uint32
+    incarnation uint32
+
+    nodeSelectionList NodeSelectionList
+    broadcastQueue    BroadcastQueue
+
+    regionProbes   uint
+    neighborProbes uint
+
+    transport   Transport
+    mailHandler MailHandler
+
+    ticker AftershockTicker
+
+    stop chan struct{}
+}
+
+// Send a direct message to the node.
+func (d *FailureDetector) SendTo(node *Node, message interface{}) error {}
+
+// Send a broadcast message to the group.
+func (d *FailureDetector) Broadcast(message interface{}) error {}
+
+// Use a mail handler.
+func (d *FailureDetector) Use(handler HandlerFunc) error {}
+
+// Start the failure detector.
+func (d *FailureDetector) Start() error {}
+
+// Gracefully stop the failure detector.
+func (d *FailureDetector) Stop() error {}
+
+// Immediately stop the failure detector.
+func (d *FailureDetector) Close() error {}
+```
+
+
+## `MemberList` exposes the client API
 
 ```go
 type Options struct {
@@ -305,22 +357,8 @@ type Options struct {
 }
 
 type MemberList struct {
-    sequence    uint32
-    incarnation uint32
-
-    regionProbes   uint
-    neighborProbes uint
-
     UserMessages <-chan interface{} // Received user messages are queued here
-
-    nodeSorter        NodeSorter
-    nodeSelectionList NodeSelectionList
-    broadcastQueue    BroadcastQueue
-
-    transport         Transport
-    mailHandler       MailHandler
-
-    ticker            AftershockTicker
+    failureDetector FailureDetector
 }
 
 // Create a new MemberList.
