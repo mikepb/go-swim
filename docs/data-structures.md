@@ -190,15 +190,23 @@ type MessageHeader struct {
 
 type PingMessage struct {
     MessageHeader
-    To Id
-}
-
-type ProbeMessage struct {
-    Ping
-    Addrs []string
+    To        Id
+    LocalTime time.Time
 }
 
 type AckMessage struct {
+    MessageHeader
+    LocalTime time.Time
+}
+
+type IndirectPingMessage struct {
+    MessageHeader
+    To Id
+    Target Id
+    Addrs []string
+}
+
+type IndirectAckMessage struct {
     MessageHeader
 }
 
@@ -229,7 +237,7 @@ type UserMessage struct {
 
 These structures describe the messages sent over the transport between peers. `Header` describes the message's sender and the `Sequence` number at the sending node. The `Incarnation` number in the `Alive`, `Suspect`, and `Dead` nodes serve as vector clocks on the target node state.
 
-The `Ping` message is sent to probe a node's status. The `Probe` message is sent to third-party nodes to indirectly probe an unresponsive node. The `Ack` message is returned by a directly probed node as well as the intermediate node serving an indirect probe.
+The `Ping` message is sent to probe a node's status. The `IndirectPing` message is sent to third-party nodes to indirectly probe an unresponsive node. The `Ack` message is returned by a directly probed node. The `IndirectAck` is returned by the intermediate node serving an indirect probe. The `LocalTime` field in`Ping` and `Ack` contain the sending node's local time and are used to estimate the round-trip time.
 
 Multiple messages are bundled together in a packet and sent as a single addressed unit. See the previous section on the `Transport` interface for more details.
 
