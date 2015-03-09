@@ -116,25 +116,6 @@ type PrioritySelectionList struct {
 The `NodeSelectionList` interface defines generic methods for managing a list of nodes for the purpose of choosing candidate nodes for pinging. The `ShuffleSelectionList` implements the round-robin shuffle method described in SWIM. The `BucketSelectionList` implements round-robin shuffle over buckets of sizes `ceil(n*(2/3)*(1/3)^i)` where `n` is the total number of nodes, `0 <= i < p` are the bucket numbers, and `p` is the number of nodes to ping during each protocol period. The `PrioritySelectionList` selects `s` nodes from the `r` closest neighboring nodes and the rest from the regional node list.
 
 
-## `AftershockTicker` for periodically pinging peers
-
-```go
-type AftershockTicker struct {
-    Period      time.Duration      // The duration between primary ticks
-    PhaseDelays []time.Duration    // The phase delays for aftershock ticks
-    C           <-chan time.Time   // The channel on which primary ticks are delivered
-    Q           []<-chan time.Time // The channels on which aftershock ticks are delivered
-}
-```
-
-The `AftershockTicker` implements a ticker that also delivers phase-shifted aftershock ticks. The ticker is used to coalesce related timeouts in the basic SWIM failure detection algorithm. The primary tick triggers the first round of `p` pings, followed by a second aftershock tick shifted by the algorithm timeout to check if any node need to be indirectly pinged. For example:
-
-```
-| Primary tick ------------>| Second aftershock tick
-| Ping `p` nodes            | Use `k` nodes for indirect pings, if needed
-```
-
-
 ## `Codec` for encoding and decoding messages
 
 ```go
@@ -330,7 +311,7 @@ type FailureDetector struct {
     transport   Transport
     mailHandler MailHandler
 
-    ticker AftershockTicker
+    ticker *time.Ticker
 
     stop chan struct{}
 }
