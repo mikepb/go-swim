@@ -190,12 +190,6 @@ type IndirectAckMessage struct {
     MessageHeader
 }
 
-type JoinMessage struct {
-    MessageHeader
-    Node
-    Incarnation uint32 // Incarnation number of the node
-}
-
 type AliveMessage struct {
     MessageHeader
     Node
@@ -225,7 +219,7 @@ These structures describe the messages sent over the transport between peers. `H
 
 The `Ping` message is sent to probe a node's status. The `IndirectPing` message is sent to third-party nodes to indirectly probe an unresponsive node. The `Ack` message is returned by a directly probed node. The `IndirectAck` is returned by the intermediate node serving an indirect probe. The `LocalTime` field in`Ping` and `Ack` contain the sending node's local time and are used to estimate the round-trip time.
 
-The `AliveMessage`, `SuspectMessage`, and `DeadMessage` messages are rebroadcast by receiving nodes up to `RetransmitMult * log(N+1)` times. Messages that have an incarnation number less than the last known incarnation number for the respective nodes are not rebroadcast. The `JoinMessage` is interpreted as an `AliveMessage` by receiving nodes and additionally instructs the receiving nodes to send an `AliveMessage` describing itself to the sender.
+The `AliveMessage`, `SuspectMessage`, and `DeadMessage` messages are rebroadcast by receiving nodes up to `RetransmitMult * log(N+1)` times. Messages that have an incarnation number less than the last known incarnation number for the respective nodes are not rebroadcast. Nodes broadcast a self-referencing `AliveMessage` after adding detecting that a new node has joined and after every `AliveMult * RetransmitMult * log(N+1)` protocol periods to ensure that all nodes eventually learn of all other nodes.
 
 Multiple messages are bundled together in a packet and sent as a single addressed unit. See the previous section on the `Transport` interface for more details.
 
@@ -355,6 +349,7 @@ type Options struct {
     Transport Transport // Transport implementation
 
     RetransmitMult uint // Retransmits = RetransmitMult * log(N+1)
+    AliveMult      uint // AliveBroadcastInterval = AliveMult * RetransmitMult * log(N+1) * ProbeInterval
     SuspicionMult  uint // SuspicionTimeout = SuspicionMult * log(N+1) * ProbeInterval
 
     IndirectProbes uint // Number of indirect probes
