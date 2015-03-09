@@ -135,6 +135,24 @@ The `AftershockTicker` implements a ticker that also delivers phase-shifted afte
 ```
 
 
+## `Codec` for encoding and decoding messages
+
+```go
+type CodedMessage struct {
+    Message interface{}
+    Data    []byte
+    Size    int
+}
+
+type Codec interface {
+    func Decode(message interface{}) (interface{}, error)
+    func Encode(message interface{}) (*CodedMessage, error)
+}
+```
+
+The `Codec` is used to encode and decode "network" messages. We make no assumptions about what the "network" is, for example, could be a simulated network capable of transmitting native Go structures. Instead, the codec returns a `CodedMessage` describing the size of the message. The size is used to limit the size of transmitted packets, for example when attaching broadcast messages. The `Data` field of `CodedMessage` is unused and may be used by the codec to cache the binary representation. Codec implementations are expected to recognize messages wrapped in a `CodedMessage` and unwrap them as necessary.
+
+
 ## `Transport` for sending and receiving messages
 
 ```go
@@ -148,23 +166,18 @@ type IncomingPacket {
     Messages []interface{}
 }
 
-type MarshalledMessage struct {
-    Message interface{}
-    Data    []byte
-    Size    int
-}
-
 type Transport interface {
-    Marshal(message []interface{}) (MarshalledMessage, error)
     MaxPacketSize() int
     Outbox() chan-> OutgoingPacket
     Inbox() <-chan IncomingPacket
 }
 ```
 
-`Transport` is responsible for sending messages to other nodes and maintaining an inbox of messages received from other nodes. This object is meant to separate the transport and control panes (https://github.com/hashicorp/memberlist/issues/21) and to ease the implementation of an in-process network simulator. The recognized message structures are described in the next section. Unrecognized messages are passed to the delegate, or the program will panic if no delegate is configured.
+`Transport` is responsible for sending messages to other nodes and maintaining an inbox of messages received from other nodes. This object is meant to separate the transport and control panes (https://github.com/hashicorp/memberlist/issues/21) and to ease the implementation of an in-process network simulator. The recognized message structures are described in the next section. Unrecognized messages are passed to the delegate, or the program will panic if no delegate is configured. Transport implementations are expected to recognize messages wrapped in a `CodedMessage` and unwrap them as necessary.
 
-The `Marshal()` and `MaxPacketSize()` methods are used to limit the size of transmitted packets, especially useful when attaching broadcast messages. The purpose of the `MarshalledMessage` structure is to cache marshalling operations on messages used to calculate the message size for limiting the size of transmitted packets. It is an optimization; the representation sent to other nodes is identical to the original message.
+The `MaxPacketSize()` method is used as a hint to limit the size of outgoing packets. Actual packets placed in the outbox may be larger.
+
+When writing a compatibility layer with existing [memberlist][] clients, transport implementations should wrap packets in an envelope understandable by the target clients.
 
 
 ## `Message` for describing network messages
@@ -302,6 +315,7 @@ type FailureDetector struct {
     regionProbes   uint
     neighborProbes uint
 
+    codec       Codec
     transport   Transport
     mailHandler MailHandler
 
@@ -334,11 +348,11 @@ func (d *FailureDetector) Close() error {}
 
 ```go
 type Options struct {
-    Id   Id          // Local node ID
-    Meta interface{} // Initial metadata for local node
+    Id Id // Local node ID
 
     Sorter NodeSorter // Node sorting implementation
 
+    Codec     Codec     // Codec implementation
     Transport Transport // Transport implementation
 
     RetransmitMult uint // Retransmits = RetransmitMult * log(N+1)
