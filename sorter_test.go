@@ -33,11 +33,11 @@ func TestFingerSorter(t *testing.T) {
 	// _ _ _ _ _ _ _
 	// 9 1 3 2 4 5 6
 
-	expect := []byte{9, 1, 3, 2, 4, 5, 6}
-	actual := make([]byte, len(expect))
+	expect := []uint64{9, 1, 3, 2, 4, 5, 6}
+	actual := make([]uint64, len(expect))
 	for i, v := range nodes {
-		actual[i] = v.Id[0]
-		if v.Id[0] != expect[i] {
+		actual[i] = v.Id
+		if v.Id != expect[i] {
 			t.Fatalf("expected order %v got %v", expect, actual)
 		}
 	}
@@ -55,26 +55,26 @@ func TestXorSorter(t *testing.T) {
 	// 9 1  2  3  4  5  6
 	// 1 9 10 11 12 13 14
 
-	expect := []byte{9, 1, 2, 3, 4, 5, 6}
-	actual := make([]byte, len(expect))
+	expect := []uint64{9, 1, 2, 3, 4, 5, 6}
+	actual := make([]uint64, len(expect))
 	for i, v := range nodes {
-		actual[i] = v.Id[0]
-		if v.Id[0] != expect[i] {
+		actual[i] = v.Id
+		if v.Id != expect[i] {
 			t.Fatalf("expected order %v got %v", expect, actual)
 		}
 	}
 }
 
 func makeTestNodes() ([]*InternalNode, *InternalNode) {
-	localNode := &InternalNode{Node: Node{Id: [8]byte{8, 0, 0, 0, 0, 0, 0, 0}}}
+	localNode := &InternalNode{Node: Node{Id: 8}}
 	nodes := []*InternalNode{
-		&InternalNode{Node: Node{Id: [8]byte{6, 0, 0, 0, 0, 0, 0, 0}}},
-		&InternalNode{Node: Node{Id: [8]byte{2, 0, 0, 0, 0, 0, 0, 0}}},
-		&InternalNode{Node: Node{Id: [8]byte{3, 0, 0, 0, 0, 0, 0, 0}}},
-		&InternalNode{Node: Node{Id: [8]byte{9, 0, 0, 0, 0, 0, 0, 0}}},
-		&InternalNode{Node: Node{Id: [8]byte{1, 0, 0, 0, 0, 0, 0, 0}}},
-		&InternalNode{Node: Node{Id: [8]byte{5, 0, 0, 0, 0, 0, 0, 0}}},
-		&InternalNode{Node: Node{Id: [8]byte{4, 0, 0, 0, 0, 0, 0, 0}}},
+		&InternalNode{Node: Node{Id: 6}},
+		&InternalNode{Node: Node{Id: 2}},
+		&InternalNode{Node: Node{Id: 3}},
+		&InternalNode{Node: Node{Id: 9}},
+		&InternalNode{Node: Node{Id: 1}},
+		&InternalNode{Node: Node{Id: 5}},
+		&InternalNode{Node: Node{Id: 4}},
 	}
 	return nodes, localNode
 }

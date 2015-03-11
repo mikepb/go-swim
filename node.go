@@ -1,11 +1,8 @@
 package swim
 
-// IDs are addressed with 64-bits, as in the IEEE EUI-64 format.
-type Id [8]byte
-
 // Node describes a member of the group.
 type Node struct {
-	Id       Id          // Node ID
+	Id       uint64      // Big-endian 64-bit ID, e.g. IEEE EUI-64 format
 	Addrs    []string    // Addresses at which to reach the node
 	UserData interface{} // User data
 }
