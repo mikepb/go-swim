@@ -14,6 +14,14 @@ type RTT struct {
 	dev  int64
 }
 
+// Set the mean RTT time to the given value and set the deviation to zero.
+// Use this method to reset the RTT estimate after a known change in the
+// network delay.
+func (r *RTT) Hint(mean time.Duration) {
+	atomic.StoreInt64(&r.mean, int64(mean))
+	atomic.StoreInt64(&r.dev, 0)
+}
+
 // Atomically read the estimated mean RTT.
 func (r *RTT) Mean() time.Duration {
 	return time.Duration(atomic.LoadInt64(&r.mean))

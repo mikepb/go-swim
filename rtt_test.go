@@ -32,6 +32,14 @@ func TestRTT(t *testing.T) {
 		t.Fatalf("expected deviation to be %v got %v", u, v)
 	}
 
+	rtt.Hint(200 * time.Millisecond)
+	if u, v := 200*time.Millisecond, rtt.Mean(); v != u {
+		t.Fatalf("expected mean to be %v got %v", u, v)
+	}
+	if u, v := time.Duration(0), rtt.Deviation(); v != u {
+		t.Fatalf("expected deviation to be %v got %v", u, v)
+	}
+
 	for i := 0; i < 9999; i++ {
 		rtt.Sample(time.Second)
 	}
