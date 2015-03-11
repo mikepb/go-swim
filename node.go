@@ -28,6 +28,6 @@ type InternalNode struct {
 	RTT         RTT // Round-trip time estimator
 
 	Node
-	State     State       // Node membership state
-	SortValue interface{} // For the sorting implementation
+	State     State  // Node membership state
+	SortValue uint64 // For the sorting implementations
 }
