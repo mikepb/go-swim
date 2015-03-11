@@ -6,7 +6,7 @@ type Id [8]byte
 // Node describes a member of the group.
 type Node struct {
 	Id       Id          // Node ID
-	Addrs    []Addr      // List of addresses assigned to the node
+	Addrs    []string    // Addresses at which to reach the node
 	UserData interface{} // User data
 }
 
