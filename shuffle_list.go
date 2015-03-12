@@ -18,13 +18,19 @@ func (l *ShuffleList) Add(nodes ...*InternalNode) {
 
 // Remove nodes from the list.
 func (l *ShuffleList) Remove(nodes ...*InternalNode) {
-	for i, node := range l.Nodes {
+	// TODO: make this more efficient
+	size := len(l.Nodes)
+	for i := 0; i < size; {
 		for _, n := range nodes {
-			if node == n {
-				l.Nodes[i] = nil
+			if l.Nodes[i] == n {
+				size -= 1
+				l.Nodes[i], l.Nodes[size] = l.Nodes[size], nil
+				i += 1
 			}
 		}
+		i += 1
 	}
+	l.Nodes = l.Nodes[0:size]
 }
 
 // Select a node from the list.
@@ -44,24 +50,6 @@ func (l *ShuffleList) Next() *InternalNode {
 
 	// shuffle the list if past end
 	if i >= size {
-		// find last non-nil index
-		for size > 0 && l.Nodes[size-1] == nil {
-			size -= 1
-		}
-		// remove nil nodes
-		for i := 0; i < size; i += 1 {
-			if l.Nodes[i] == nil {
-				l.Nodes[i-1] = l.Nodes[size]
-				size -= 1
-				// ignore nil nodes
-				for size > 0 && l.Nodes[size-1] == nil {
-					size -= 1
-				}
-			}
-		}
-		// update slice
-		l.Nodes = l.Nodes[0:size]
-		// shuffle list
 		l.Shuffle()
 		i = 0
 	}
@@ -83,8 +71,8 @@ func (l *ShuffleList) Next() *InternalNode {
 // Shuffle the list.
 func (l *ShuffleList) Shuffle() {
 	for i := len(l.Nodes) - 1; i > 0; i -= 1 {
-		j := rand.Intn(i)
-		l.Nodes[i], l.Nodes[j] = l.Nodes[j], l.Nodes[j]
+		j := rand.Intn(i + 1)
+		l.Nodes[i], l.Nodes[j] = l.Nodes[j], l.Nodes[i]
 	}
 }
 
