@@ -93,3 +93,8 @@ func (l *ShuffleList) Shuffle() {
 func (l *ShuffleList) List() []*InternalNode {
 	return l.Nodes
 }
+
+// Get the size of the list.
+func (l *ShuffleList) Size() int {
+	return len(l.Nodes)
+}

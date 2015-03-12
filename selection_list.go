@@ -7,4 +7,5 @@ type SelectionList interface {
 	Remove(nodes ...*InternalNode)
 	Next() *InternalNode
 	List() []*InternalNode
+	Size() int
 }

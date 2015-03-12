@@ -19,6 +19,8 @@ func TestShuffleList(t *testing.T) {
 	sl.Add(n1, n2)
 	if l := sl.List(); len(l) != 2 {
 		t.Fatalf("expected 2 nodes, got %v", len(l))
+	} else if s := sl.Size(); s != 2 {
+		t.Fatalf("expected 2 nodes, got %v", s)
 	} else if l[0] != n1 {
 		t.Fatalf("expected node 1, got %v", l[0])
 	} else if l[1] != n2 {
@@ -31,15 +33,28 @@ func TestShuffleList(t *testing.T) {
 		t.Fatalf("expected node 2, got %v", n)
 	}
 
-	for i := 3; i <= 999; i += 1 {
-		sl.Add(&InternalNode{Node: Node{Id: uint64(i)}})
+	nodes := make([]*InternalNode, 997)
+	for i := range nodes {
+		nodes[i] = &InternalNode{Node: Node{Id: uint64(i + 3)}}
 	}
+	sl.Add(nodes...)
 	l := sl.List()
 	order := make([]*InternalNode, len(l))
 	copy(order, l)
-	for i := 0; i < 999; i += 1 {
-		sl.Next()
+
+	for i := range nodes {
+		if id := sl.Next().Id; id != uint64(i+3) {
+			t.Fatalf("expected node %v got %v", i+3, id)
+		}
 	}
+
+	if l := sl.List(); len(l) != 999 {
+		t.Fatalf("expected 2 nodes, got %v", len(l))
+	} else if s := sl.Size(); s != 999 {
+		t.Fatalf("expected 2 nodes, got %v", s)
+	}
+
+	next := sl.Next()
 
 	func() {
 		l := sl.List()
@@ -51,7 +66,7 @@ func TestShuffleList(t *testing.T) {
 		t.Fatalf("expected list to be shuffled")
 	}()
 
-	if sl.Next() == n1 && sl.Next() == n2 {
+	if next == n1 && sl.Next() == n2 {
 		t.Fatalf("expected list to be shuffled")
 	}
 }
