@@ -1,29 +1,136 @@
 package swim
 
+import (
+// "math"
+)
+
 // A bucket list selects nodes using round-robin over buckets of nodes. Each
-// bucket is at least twice as large as the next smaller bucket.
+// bucket is at least twice as large as the next smaller bucket. The methods
+// are not safe to run concurrently.
 type BucketList struct {
-	N           uint            // Number of buckets to maintain
-	SortedNodes []*InternalNode // List of sorted nodes
-	Buckets     []ShuffleList   // List of buckets
-	Sort        Sorter          // Sorter implementation
+	K         int    // Number of buckets to maintain
+	Sort      Sorter // Sorter implementation
+	LocalNode *InternalNode
 
-	nodes  []*InternalNode // List of unsorted nodes for buckets
-	bounds []int           // List of bucket boundaries
+	nodes      []*InternalNode // List of nodes
+	buckets    []ShuffleList   // List of buckets
+	nextBucket int
 }
 
-/*
-// Replace the internal list of sorted nodes, updating buckets as needed.
-// Primarily used to avoid double-sorting with NeighborhoodSelectionList.
-func (l *BucketSelectionList) UpdateInPlace(sortedNodes []*InternalNode) error {}
+// Add nodes to the list.
+func (l *BucketList) Add(nodes ...*InternalNode) {
+	k := l.K
 
-// Implements NodeSelectionList
-type PrioritySelectionList struct {
-  k           uint                 // Number of regional buckets to maintain
-  r           uint                 // Size of the neighborhood
-  s           uint                 // Number of nodes to select from the neighborhood
-  region      BucketSelectionList  // Regional nodes are more than r nodes away
-  neighbors   ShuffleSelectionList // Neighboring nodes are within r nodes distance
-  sortedNodes []*InternalNode      // List of nodes sorted by OrderingId
+	// check required properties
+	if k < 2 {
+		panic("K < 2")
+	} else if l.LocalNode == nil {
+		panic("Sort == nil")
+	} else if l.Sort == nil {
+		panic("LocalNode == nil")
+	}
+
+	// update buckets
+	l.Reset(append(l.nodes, nodes...))
+	// TODO: resetting leaves us vulnerable to denial-of-service from
+	// malicious nodes broadcasting the presence of non-existent nodes
 }
-*/
+
+// Remove nodes from the list.
+func (l *BucketList) Remove(removes ...*InternalNode) {
+	// TODO: make this more efficient
+	nodes := make([]*InternalNode, 0, len(l.nodes))
+	for _, bucket := range l.buckets {
+		bucket.Remove(removes...)
+		nodes = append(nodes, bucket.List()...)
+	}
+	l.Reset(nodes)
+}
+
+// Reset the state of the selection list with the given nodes.
+func (l *BucketList) Reset(nodes []*InternalNode) {
+	k := l.K
+
+	// sort nodes
+	l.Sort(nodes, l.LocalNode)
+
+	// create buckets
+	buckets := make([]ShuffleList, k)
+	localNodes := make([]*InternalNode, len(nodes))
+	copy(localNodes, nodes)
+
+	// populate buckets
+	unallocated := localNodes
+	for i := k - 1; i > 0; i -= 1 {
+		q := 1 << uint(i)
+		d := (q << 1) - 1
+		l := len(unallocated)
+		n := (l*q + d - 1) / d
+		bucket := &buckets[i]
+		bucket.Nodes = unallocated[l-n:]
+		bucket.Shuffle()
+		unallocated = unallocated[:l-n]
+	}
+
+	// populate first bucket
+	bucket := &buckets[0]
+	bucket.Nodes = unallocated
+	bucket.Shuffle()
+
+	// save changes
+	l.nodes = localNodes
+	l.buckets = buckets
+}
+
+// Select a node from the list.
+func (l *BucketList) Next() *InternalNode {
+
+	// edge case
+	if len(l.buckets) == 0 {
+		return nil
+	}
+
+	// get next node
+	i := l.nextBucket % len(l.buckets)
+	for range l.buckets {
+		if node := l.buckets[i].Next(); node != nil {
+			l.nextBucket = (i + 1) % len(l.buckets)
+			return node
+		}
+		i = (i + 1) % len(l.buckets)
+	}
+
+	// all buckets empty
+	return nil
+}
+
+// Get a list of the contained nodes. The returned list references the
+// internal slice and should not be modified.
+func (l *BucketList) List() []*InternalNode {
+	return l.nodes
+}
+
+// Get the size of the list.
+func (l *BucketList) Size() int {
+	return len(l.nodes)
+}
+
+var deBruijn = []int{0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4,
+	8, 31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9}
+
+// https://graphics.stanford.edu/~seander/bithacks.html#IntegerLogDeBruijn
+func log2ceil(x int) int {
+	v := uint32(x)
+
+	// round to next power of 2
+	if v&(v-1) != 0 {
+		v |= v >> 1
+		v |= v >> 2
+		v |= v >> 4
+		v |= v >> 8
+		v |= v >> 16
+		v += 1
+	}
+
+	return deBruijn[(v*0x077CB531)>>27]
+}
