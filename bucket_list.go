@@ -116,7 +116,7 @@ func (l *BucketList) List() []*InternalNode {
 	return l.nodes
 }
 
-// Get the size of the list.
-func (l *BucketList) Size() int {
+// Get the length of the list.
+func (l *BucketList) Len() int {
 	return len(l.nodes)
 }

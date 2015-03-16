@@ -117,8 +117,8 @@ func (m *Mailbox) deliverError(err error) {
 	m.errors <- err
 }
 
-// Get a hit of the maximum message size supported by the underlying
+// Get a hit of the maximum message length supported by the underlying
 // transport.
-func (m *Mailbox) MaxMessageSize() int {
-	return m.Transport.MaxMessageSize()
+func (m *Mailbox) MaxMessageLen() int {
+	return m.Transport.MaxMessageLen()
 }

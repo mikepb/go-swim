@@ -86,9 +86,9 @@ func TestMailbox(t *testing.T) {
 	// stop receiving
 	mbox.Stop()
 
-	// test max message size
-	if msize := mbox.MaxMessageSize(); msize != mms {
-		t.Fatalf("Expected max message size %v got %v", mms, msize)
+	// test max message length
+	if mlen := mbox.MaxMessageLen(); mlen != mms {
+		t.Fatalf("Expected max message length %v got %v", mms, mlen)
 	}
 }
 
@@ -143,7 +143,7 @@ func newTestTransport(mms int) *testTransport {
 	}
 }
 
-func (t *testTransport) MaxMessageSize() int {
+func (t *testTransport) MaxMessageLen() int {
 	return t.mms
 }
 

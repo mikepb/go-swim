@@ -19,7 +19,7 @@ func TestShuffleList(t *testing.T) {
 	sl.Add(n1, n2)
 	if l := sl.List(); len(l) != 2 {
 		t.Fatalf("expected 2 nodes, got %v", len(l))
-	} else if s := sl.Size(); s != 2 {
+	} else if s := sl.Len(); s != 2 {
 		t.Fatalf("expected 2 nodes, got %v", s)
 	} else if l[0] != n1 {
 		t.Fatalf("expected node 1, got %v", l[0])
@@ -48,7 +48,7 @@ func TestShuffleList(t *testing.T) {
 		}
 	}
 
-	if s := sl.Size(); s != 999 {
+	if s := sl.Len(); s != 999 {
 		t.Fatalf("expected 2 nodes, got %v", s)
 	}
 
@@ -69,7 +69,7 @@ func TestShuffleList(t *testing.T) {
 	}
 
 	sl.Remove(n1, n2)
-	if s := sl.Size(); s != 997 {
+	if s := sl.Len(); s != 997 {
 		t.Fatalf("expected 2 nodes, got %v", s)
 	}
 

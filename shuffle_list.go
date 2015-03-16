@@ -118,10 +118,10 @@ func (l *ShuffleList) List() []*InternalNode {
 	return l.Nodes
 }
 
-// Get the size of the list. If a list of nodes to use for the next round is
-// set, the size of that list is returned instead of the size of the
+// Get the length of the list. If a list of nodes to use for the next round
+// is set, the length of that list is returned instead of the length of the
 // currently active list.
-func (l *ShuffleList) Size() int {
+func (l *ShuffleList) Len() int {
 	if l.NextNodes != nil {
 		return len(l.NextNodes)
 	}
