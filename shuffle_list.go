@@ -8,6 +8,7 @@ import (
 // round. The methods are not safe to run concurrently.
 type ShuffleList struct {
 	Nodes     []*InternalNode // List of nodes
+	NextNodes []*InternalNode // List of nodes for the next round
 	nextIndex int
 }
 
@@ -19,24 +20,55 @@ func (l *ShuffleList) Add(nodes ...*InternalNode) {
 // Remove nodes from the list.
 func (l *ShuffleList) Remove(nodes ...*InternalNode) {
 	// TODO: make this more efficient
-	size := len(l.Nodes)
-	for i := 0; i < size; {
+	end := len(l.Nodes)
+	start := 0
+
+	// for each node in the shuffle list
+	for i := 0; i < end; i += 1 {
+
+		// check if it matches any of the nodes to be removed
 		for _, n := range nodes {
 			if l.Nodes[i] == n {
-				size -= 1
-				l.Nodes[i], l.Nodes[size] = l.Nodes[size], nil
-				i += 1
+
+				if i < l.nextIndex {
+					// if we've already visited this node, swap with first node
+					l.Nodes[i] = l.Nodes[start]
+					start += 1
+				} else {
+					// otherwise, swap with last
+					end -= 1
+					l.Nodes[i] = l.Nodes[end]
+				}
 			}
 		}
-		i += 1
 	}
-	l.Nodes = l.Nodes[0:size]
+
+	// trim unused slots
+	l.Nodes = l.Nodes[start:end]
 }
 
 // Select a node from the list.
 func (l *ShuffleList) Next() *InternalNode {
 	i := l.nextIndex
 	size := len(l.Nodes)
+
+	// shuffle the list if past end
+	if i >= size {
+
+		// swap out next set of nodes
+		if l.NextNodes != nil {
+			l.Nodes, l.NextNodes = l.NextNodes, nil
+			size = len(l.Nodes)
+		}
+
+		// randomize the list
+		if size > 1 {
+			l.Shuffle()
+		}
+
+		// reset the next index
+		i = 0
+	}
 
 	// empty case
 	if size == 0 {
@@ -46,12 +78,6 @@ func (l *ShuffleList) Next() *InternalNode {
 	// one node
 	if size == 1 {
 		return l.Nodes[0]
-	}
-
-	// shuffle the list if past end
-	if i >= size {
-		l.Shuffle()
-		i = 0
 	}
 
 	// find next non-nil node
@@ -66,6 +92,11 @@ func (l *ShuffleList) Next() *InternalNode {
 
 	// return the node
 	return node
+}
+
+// Set the list of nodes to use for the next round.
+func (l *ShuffleList) SetNext(nodes []*InternalNode) {
+	l.NextNodes = nodes
 }
 
 // Shuffle the list.

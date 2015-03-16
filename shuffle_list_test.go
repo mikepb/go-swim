@@ -72,4 +72,23 @@ func TestShuffleList(t *testing.T) {
 	if s := sl.Size(); s != 997 {
 		t.Fatalf("expected 2 nodes, got %v", s)
 	}
+
+	sl.SetNext([]*InternalNode{})
+	sl.nextIndex = len(sl.Nodes)
+	if sl.Next() != nil {
+		t.Fatalf("expected nil node")
+	} else if len(sl.Nodes) != 0 {
+		t.Fatalf("expected empty list")
+	} else if sl.NextNodes != nil {
+		t.Fatalf("expected nil list")
+	}
+
+	sl.SetNext([]*InternalNode{n1})
+	if sl.Next() != n1 {
+		t.Fatalf("expected node 1")
+	} else if l := len(sl.Nodes); l != 1 {
+		t.Fatalf("expected list of size %v got %v", 1, l)
+	} else if sl.NextNodes != nil {
+		t.Fatalf("expected nil list")
+	}
 }
