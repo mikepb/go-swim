@@ -49,7 +49,8 @@ Instead of implementing non-piggybacked gossip outside of the SWIM messages, `go
 
 ## Design documents
 
-- [Data Structures][data-structures] describes the responsibilities and rationale for the data structures in `go-swim`.
+- [Architecture][architecture] describes how the data structures in `go-swim` interact to implement the SWIM failure detector.
+- [Simulator][simulator] describes the in-process network simulator and how to run it.
 
 
 ## License
@@ -69,6 +70,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 
+[architecture]: docs/architecture.md
 [memberlist]: https://github.com/hashicorp/memberlist
-[data-structures]: docs/data-structures.md
+[simulator]: docs/simulator.md
 [swim]: http://www.cs.cornell.edu/~asdas/research/dsn02-SWIM.pdf
