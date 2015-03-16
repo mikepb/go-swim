@@ -54,19 +54,8 @@ func (l *ShuffleList) Next() *InternalNode {
 
 	// shuffle the list if past end
 	if i >= size {
-
-		// swap out next set of nodes
-		if l.NextNodes != nil {
-			l.Nodes, l.NextNodes = l.NextNodes, nil
-			size = len(l.Nodes)
-		}
-
-		// randomize the list
-		if size > 1 {
-			l.Shuffle()
-		}
-
-		// reset the next index
+		l.Shuffle()
+		size = len(l.Nodes)
 		i = 0
 	}
 
@@ -80,27 +69,38 @@ func (l *ShuffleList) Next() *InternalNode {
 		return l.Nodes[0]
 	}
 
-	// find next non-nil node
+	// get next node
 	var node *InternalNode
-	for node == nil && i < size {
+	if i < size {
 		node = l.Nodes[i]
-		i += 1
 	}
 
 	// update index
-	l.nextIndex = i
+	l.nextIndex = i + 1
 
 	// return the node
 	return node
 }
 
-// Set the list of nodes to use for the next round.
+// Set the list of nodes to use for the next round. This method is used to
+// support efficient node updates from a bucket list.
 func (l *ShuffleList) SetNext(nodes []*InternalNode) {
-	l.NextNodes = nodes
+	if len(l.Nodes) == 0 {
+		l.Nodes, l.NextNodes = nodes, nil
+	} else {
+		l.NextNodes = nodes
+	}
 }
 
 // Shuffle the list.
 func (l *ShuffleList) Shuffle() {
+
+	// swap out next set of nodes
+	if l.NextNodes != nil {
+		l.Nodes, l.NextNodes = l.NextNodes, nil
+	}
+
+	// randomize list
 	for i := len(l.Nodes) - 1; i > 0; i -= 1 {
 		j := rand.Intn(i + 1)
 		l.Nodes[i], l.Nodes[j] = l.Nodes[j], l.Nodes[i]
@@ -108,12 +108,22 @@ func (l *ShuffleList) Shuffle() {
 }
 
 // Get a list of the contained nodes. The returned list references the
-// internal slice and should not be modified.
+// internal slice and should not be modified. If a list of nodes to use for
+// the next round is set, that list is returned instead of the currently
+// active list.
 func (l *ShuffleList) List() []*InternalNode {
+	if l.NextNodes != nil {
+		return l.NextNodes
+	}
 	return l.Nodes
 }
 
-// Get the size of the list.
+// Get the size of the list. If a list of nodes to use for the next round is
+// set, the size of that list is returned instead of the size of the
+// currently active list.
 func (l *ShuffleList) Size() int {
+	if l.NextNodes != nil {
+		return len(l.NextNodes)
+	}
 	return len(l.Nodes)
 }

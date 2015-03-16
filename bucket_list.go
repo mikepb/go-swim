@@ -13,7 +13,7 @@ type BucketList struct {
 	LocalNode *InternalNode
 
 	nodes      []*InternalNode // List of nodes
-	buckets    []ShuffleList   // List of buckets
+	buckets    []*ShuffleList  // List of buckets
 	nextBucket int
 }
 
@@ -30,10 +30,8 @@ func (l *BucketList) Add(nodes ...*InternalNode) {
 		panic("LocalNode == nil")
 	}
 
-	// update buckets
-	l.Reset(append(l.nodes, nodes...))
-	// TODO: resetting leaves us vulnerable to denial-of-service from
-	// malicious nodes broadcasting the presence of non-existent nodes
+	// set next set of nodes
+	l.SetNext(append(l.nodes, nodes...))
 }
 
 // Remove nodes from the list.
@@ -44,17 +42,27 @@ func (l *BucketList) Remove(removes ...*InternalNode) {
 		bucket.Remove(removes...)
 		nodes = append(nodes, bucket.List()...)
 	}
-	l.Reset(nodes)
+	l.SetNext(nodes)
 }
 
-// Reset the state of the selection list with the given nodes.
-func (l *BucketList) Reset(nodes []*InternalNode) {
+// Set the next list of nodes from which to select
+func (l *BucketList) SetNext(nodes []*InternalNode) {
 	k := l.K
 
-	// create buckets
-	buckets := make([]ShuffleList, k)
+	// copy nodes to prevent modifying the underlying array
 	localNodes := make([]*InternalNode, len(nodes))
 	copy(localNodes, nodes)
+
+	// update number of buckets
+	buckets := l.buckets
+	n := len(buckets)
+	if n < k {
+		for ; n < k; n += 1 {
+			buckets = append(buckets, new(ShuffleList))
+		}
+	} else if n > k {
+		buckets = buckets[:k]
+	}
 
 	// sort nodes
 	l.Sort(localNodes, l.LocalNode)
@@ -66,16 +74,14 @@ func (l *BucketList) Reset(nodes []*InternalNode) {
 		d := (q << 1) - 1
 		l := len(unallocated)
 		n := (l*q + d - 1) / d
-		bucket := &buckets[i]
-		bucket.Nodes = unallocated[l-n:]
-		bucket.Shuffle()
+		bucket := buckets[i]
+		bucket.SetNext(unallocated[l-n:])
 		unallocated = unallocated[:l-n]
 	}
 
 	// populate first bucket
-	bucket := &buckets[0]
-	bucket.Nodes = unallocated
-	bucket.Shuffle()
+	bucket := buckets[0]
+	bucket.SetNext(unallocated)
 
 	// save changes
 	l.nodes = localNodes

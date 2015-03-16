@@ -24,7 +24,7 @@ func TestBucketList(t *testing.T) {
 		testListSize(t, bl, count)
 		i := uint64(1)
 		for _, b := range bl.buckets {
-			nodes := b.Nodes
+			nodes := b.List()
 			sort.Sort(byId(nodes))
 			for _, n := range nodes {
 				if i > uint64(count) {
