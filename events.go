@@ -1,22 +1,5 @@
 package swim
 
-// A message encapsulates pings, acknowledgements, and piggybacked broadcast
-// messages sent between nodes. The events types are listed individually to
-// simplify implementation. Codec implementations are assumed to omit empty
-// fields for efficiency.
-type Message struct {
-	From       uint64          // The node sending this message
-	To         uint64          // The node to which this message is intended
-	Ping       PingEvent       // A ping for the recipient
-	Ack        AckEvent        // A ping acknowledgement
-	Requests   []RequestEvent  // Indirect ping requests
-	Responses  []ResponseEvent // Indirect ping responses
-	Alives     []AliveEvent    // Alive broadcasts
-	Suspects   []SuspectEvent  // Suspect broadcasts
-	Deaths     []DeathEvent    // Death broadcasts
-	UserEvents []UserEvent     // User event broadcasts
-}
-
 // A ping event probes a node. The timestamp is returned in the ack event by
 // the receiving node.
 type PingEvent struct {
