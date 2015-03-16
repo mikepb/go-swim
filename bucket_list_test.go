@@ -1,15 +1,41 @@
 package swim
 
 import (
+	"sort"
 	"testing"
 )
 
 func TestBucketList(t *testing.T) {
 	bl := &BucketList{K: 3,
 		Sort: func(nodes []*InternalNode, localNode *InternalNode) error {
+			sort.Sort(byId(nodes))
 			return nil
 		},
 		LocalNode: &InternalNode{},
+	}
+
+	count := 0
+	node := func() *InternalNode {
+		count += 1
+		return &InternalNode{Node: Node{Id: uint64(count)}}
+	}
+
+	testBucketSize := func() {
+		testListSize(t, bl, count)
+		i := uint64(1)
+		for _, b := range bl.buckets {
+			nodes := b.Nodes
+			sort.Sort(byId(nodes))
+			for _, n := range nodes {
+				if i > uint64(count) {
+					t.Fatalf("expected %v IDs got %v", count, i)
+				}
+				if n.Id != i {
+					t.Fatalf("expected ID %v got %v", i, n.Id)
+				}
+				i += 1
+			}
+		}
 	}
 
 	if n := bl.Next(); n != nil {
@@ -17,61 +43,59 @@ func TestBucketList(t *testing.T) {
 	}
 
 	// 1 node: 0 0 1
-	n1 := &InternalNode{}
+	n1 := node()
 	bl.Add(n1)
 	testBucketSizes(t, bl, []int{0, 0, 1})
-	testListSize(t, bl, 1)
+	testBucketSize()
 
 	if n := bl.Next(); n != n1 {
 		t.Fatalf("expected %v got %v", n1, n)
 	}
 
 	// 2 nodes: 0 0 2
-	bl.Add(&InternalNode{})
+	bl.Add(node())
 	testBucketSizes(t, bl, []int{0, 0, 2})
-	testListSize(t, bl, 2)
+	testBucketSize()
 
 	// 3 nodes: 0 1 2
-	bl.Add(&InternalNode{})
+	bl.Add(node())
 	testBucketSizes(t, bl, []int{0, 1, 2})
-	testListSize(t, bl, 3)
+	testBucketSize()
 
 	// 4 nodes: 0 1 3
-	bl.Add(&InternalNode{})
+	bl.Add(node())
 	testBucketSizes(t, bl, []int{0, 1, 3})
-	testListSize(t, bl, 4)
+	testBucketSize()
 
 	// 5 nodes: 0 2 3
-	bl.Add(&InternalNode{})
+	bl.Add(node())
 	testBucketSizes(t, bl, []int{0, 2, 3})
-	testListSize(t, bl, 5)
+	testBucketSize()
 
 	// 6 nodes: 0 2 4
-	bl.Add(&InternalNode{})
+	bl.Add(node())
 	testBucketSizes(t, bl, []int{0, 2, 4})
-	testListSize(t, bl, 6)
+	testBucketSize()
 
 	// 7 nodes: 1 2 4
-	bl.Add(&InternalNode{})
+	bl.Add(node())
 	testBucketSizes(t, bl, []int{1, 2, 4})
-	testListSize(t, bl, 7)
+	testBucketSize()
 
 	// 8 nodes: 1 2 5
-	bl.Add(&InternalNode{})
+	bl.Add(node())
 	testBucketSizes(t, bl, []int{1, 2, 5})
-	testListSize(t, bl, 8)
+	testBucketSize()
 
 	// 15 nodes: 2 4 9
-	bl.Add(&InternalNode{}, &InternalNode{}, &InternalNode{}, &InternalNode{})
-	bl.Add(&InternalNode{}, &InternalNode{}, &InternalNode{})
+	bl.Add(node(), node(), node(), node(), node(), node(), node())
 	testBucketSizes(t, bl, []int{2, 4, 9})
-	testListSize(t, bl, 15)
+	testBucketSize()
 
 	// 22 nodes: 3 6 13
-	bl.Add(&InternalNode{}, &InternalNode{}, &InternalNode{}, &InternalNode{})
-	bl.Add(&InternalNode{}, &InternalNode{}, &InternalNode{})
+	bl.Add(node(), node(), node(), node(), node(), node(), node())
 	testBucketSizes(t, bl, []int{3, 6, 13})
-	testListSize(t, bl, 22)
+	testBucketSize()
 }
 
 func testBucketSizes(t *testing.T, bucket *BucketList, sizes []int) {

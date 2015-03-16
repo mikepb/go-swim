@@ -51,13 +51,13 @@ func (l *BucketList) Remove(removes ...*InternalNode) {
 func (l *BucketList) Reset(nodes []*InternalNode) {
 	k := l.K
 
-	// sort nodes
-	l.Sort(nodes, l.LocalNode)
-
 	// create buckets
 	buckets := make([]ShuffleList, k)
 	localNodes := make([]*InternalNode, len(nodes))
 	copy(localNodes, nodes)
+
+	// sort nodes
+	l.Sort(localNodes, l.LocalNode)
 
 	// populate buckets
 	unallocated := localNodes
