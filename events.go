@@ -36,26 +36,27 @@ type ResponseEvent struct {
 type AliveEvent struct {
 	From        uint64 // ID of the node broadcasting this event
 	Node               // The alive node
-	Incarnation uint32 // Incarnation number of the node
+	Incarnation Seq    // Incarnation number of the node
 }
 
 // A suspect event indicates that a node is suspected of death.
 type SuspectEvent struct {
 	From        uint64 // ID of the node broadcasting this event
 	Id          uint64 // ID of the suspected node
-	Incarnation uint32 // Incarnation number of the node
+	Incarnation Seq    // Incarnation number of the node
 }
 
 // A death event indicates that a node is confirmed dead.
 type DeathEvent struct {
 	From        uint64 // ID of the node broadcasting this event
 	Id          uint64 // ID of the dead node
-	Incarnation uint32 // Incarnation number of the node
+	Incarnation Seq    // Incarnation number of the node
 }
 
 // A user event is an application-specific broadcast. The event is passed
 // directly to the client application.
 type UserEvent struct {
 	From uint64      // ID of the node broadcasting this event
+	Seq  Seq         // Sequence number of the event
 	Data interface{} // User-specific data associated with the node
 }

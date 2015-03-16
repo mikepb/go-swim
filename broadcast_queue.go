@@ -1,53 +1,106 @@
 package swim
 
-type Broadcast interface {
+import (
+	"container/heap"
+)
 
-	// Determine if another broadcast invalidates this one.
-	Invalidates(b Broadcast) bool
-
-	// Get the broadcast data.
-	Data() interface{}
-
-	// Get an estimate of the broadcast size.
-	Size() int
-
-	// Invoked when the broadcast reaches its retransmission limit or is
-	// invalidated by another broadcast.
-	Done()
-}
-
-type limitedBroadcast struct {
-	transmits int       // Number of transmissions attempted
-	b         Broadcast // The broadcast
-}
-
-// Implements the sort.Interface methods
-type priorityBroadcasts []*limitedBroadcast
-
+// A broadcast queue implements a priority queue ordered on the number of
+// transmission attempts and the priority class of the broadcasts.
 type BroadcastQueue struct {
-	Limit     int // Maximum number of queued broadcasts before blocking
-	Transmits int // Maximum number of transmission
-	queue     priorityBroadcasts
+	sourceMap map[bcastTag]*Broadcast
+	bcasts    bcastQueue
 }
 
-// Set the transmission limit, pruning the queue of broadcasts exceeding
-// this limit.
-func (q *BroadcastQueue) SetTransmits(transmits int) {
-	q.Transmits = transmits
+func NewBroadcastQueue() *BroadcastQueue {
+	return &BroadcastQueue{
+		sourceMap: make(map[bcastTag]*Broadcast),
+	}
 }
 
-// Push a broadcast onto the queue, blocking if Limit > 0 and the queue is
-// full. Broadcasts exceeding the transmission limit are removed from the
-// queue before adding the new broadcast.
-func (q *BroadcastQueue) Push(bs ...Broadcast) {}
+// Initialize the priority queue by fixing the heap invariants.
+func (q *BroadcastQueue) Init() {
+	heap.Init(&q.bcasts)
+}
 
-// Consume the broadcasts, incrementing the number of transmissions and
-// removing the broadcast from the queue if it exceeds the transmission limit.
-func (q *BroadcastQueue) Consume(bs ...Broadcast) {}
+// Fix the heap invariants resulting from a change to the given broadcast.
+func (q *BroadcastQueue) Fix(bcast *Broadcast) {
+	q.Init()
+}
 
-// Match broadcasts up to the given byte size and broadcast transmission
-// limit, if set. A byte size of zero or less means no size limit.
-func (q *BroadcastQueue) Match(size int) []Broadcast {}
+// Return the highest priority broadcast without removing it.
+func (q *BroadcastQueue) Peek() *Broadcast {
+	if len(q.bcasts) == 0 {
+		return nil
+	}
+	return q.bcasts[0]
+}
+
+// Push a broadcast onto the queue.
+func (q *BroadcastQueue) Push(bcast *Broadcast) {
+
+	// broadcast does not belong to a queue or it belongs to this one
+	if bcast.q != nil && bcast.q != q {
+		panic("broadcast belongs to a different queue")
+	}
+
+	// this broadcast now belongs to this queue
+	bcast.q = q
+
+	// invalidate an existing broadcast or add it to the queue
+	tag := bcast.tag()
+	if that, ok := q.sourceMap[tag]; ok {
+		if bcast.Invalidates(that) {
+			*that = *bcast
+			q.Init()
+		}
+	} else {
+		q.sourceMap[tag] = bcast
+		q.bcasts = append(q.bcasts, bcast)
+	}
+}
+
+// Remove the highest priority broadcast from the queue.
+func (q *BroadcastQueue) Pop() *Broadcast {
+	bcast := heap.Pop(&q.bcasts).(*Broadcast)
+	bcast.q = nil
+	delete(q.sourceMap, bcast.tag())
+	return bcast
+}
 
 // Get the number of queued broadcasts.
-func (q *BroadcastQueue) Size() int {}
+func (q *BroadcastQueue) Len() int {
+	return len(q.bcasts)
+}
+
+type bcastQueue []*Broadcast
+
+// Get the number of queued broadcasts.
+func (q bcastQueue) Len() int {
+	return len(q)
+}
+
+// Determine if the broadcast at index i has a lower priority than the
+// broadcast at index j.
+func (q bcastQueue) Less(i, j int) bool {
+	return q[i].Priority() < q[j].Priority()
+}
+
+// Swap the broadcast at index i with the broadcast at index j.
+func (q bcastQueue) Swap(i, j int) {
+	q[i], q[j] = q[j], q[i]
+}
+
+// Implementation of heap.Interface.Pop().
+func (q *bcastQueue) Push(x interface{}) {
+	bcast := x.(*Broadcast)
+	*q = append(*q, bcast)
+}
+
+// Implementation of heap.Interface.Pop().
+func (q *bcastQueue) Pop() interface{} {
+	old := *q
+	l := len(old) - 1
+	b := old[l]
+	*q = old[:l]
+	return b
+}
