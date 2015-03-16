@@ -17,11 +17,11 @@ type Message struct {
 	UserEvents []UserEvent     // User event broadcasts
 }
 
-// A coded message encapsulates a
+// A coded message encapsulates a message for encoding and decoding.
 type CodedMessage struct {
-	Message
-	Bytes []byte
-	Size  int
+	Message        // The contained message, which may be empty
+	Bytes   []byte // The byte-encoded message
+	Size    int    // The size of the message, if not byte-encoded
 }
 
 // A codec handles message encoding as sent over the transport
