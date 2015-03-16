@@ -14,7 +14,7 @@ type Transport interface {
 	// Send the given message to the node. The message is guaranteed to
 	// already have been encoded by an encoder. The transport may support
 	// sending the Go value directly, ignoring the encoded byte value.
-	Send(node *Node, message *CodedMessage) error
+	SendTo(node *Node, message *CodedMessage) error
 
 	// The inbox channel receives messages from the network for processing.
 	Inbox() <-chan *CodedMessage
