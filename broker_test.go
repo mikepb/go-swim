@@ -99,11 +99,6 @@ func TestMailbox(t *testing.T) {
 	// stop receiving
 	broker.Stop()
 
-	// test max message length
-	if mlen := broker.MaxMessageLen(); mlen != mms {
-		t.Fatalf("Expected max message length %v got %v", mms, mlen)
-	}
-
 	// TODO: test with broadcasts
 }
 

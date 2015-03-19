@@ -124,7 +124,7 @@ func (b *Broker) encodeWithBroadcasts(coded *CodedMessage) error {
 	if bcasts := b.bqueue.List(); len(bcasts) > 0 {
 
 		// limit number of piggybacked broadcasts if supported
-		if b.MaxMessageLen() > 0 && b.bEstimate > 0.0 {
+		if b.Transport.MaxMessageLen() > 0 && b.bEstimate > 0.0 {
 			end := int(b.bEstimate) - coded.Message.EventCount()
 
 			// attach at least one event
@@ -159,7 +159,7 @@ func (b *Broker) encodeWithBroadcasts(coded *CodedMessage) error {
 	if coded.Size > 0 {
 
 		// estimate number of events supported
-		maxSize := float64(b.MaxMessageLen())
+		maxSize := float64(b.Transport.MaxMessageLen())
 		size := float64(coded.Size)
 		count := float64(coded.Message.EventCount())
 		b.bEstimate = 0.75*b.bEstimate + 0.25*(maxSize/(size/count))
@@ -186,10 +186,4 @@ func (b *Broker) deliverError(err error) {
 	if b.Errors != nil {
 		b.Errors <- err
 	}
-}
-
-// Get a hit of the maximum message length supported by the underlying
-// transport.
-func (b *Broker) MaxMessageLen() int {
-	return b.Transport.MaxMessageLen()
 }
