@@ -6,14 +6,14 @@ import (
 
 func TestBroadcast(t *testing.T) {
 	var bcast Broadcast
-	attempts := 0
+	attempts := uint(0)
 
 	reset := func() {
 		bcast = Broadcast{}
 		attempts = 0
 	}
 
-	priority := func(expect int) {
+	priority := func(expect uint) {
 		if p := bcast.Priority(); p != expect {
 			t.Fatalf("Expected priority %v got %v", expect, p)
 		}
@@ -66,7 +66,7 @@ func TestBroadcast(t *testing.T) {
 	alive := &AliveEvent{From: 1, Node: Node{Id: 2}, Incarnation: Seq(3)}
 	bcast.Event = alive
 	aliveTag := bcast.Event.Tag()
-	if aliveTag.From != 1 || aliveTag.Id != 2 || aliveTag.Type != bcastAlive {
+	if aliveTag.From != 2 || aliveTag.Id != 2 || aliveTag.Type != bcastAlive {
 		t.Fatalf("Expected valid alive tag")
 	} else if bcast.Event.Seq().Get() != Seq(3) {
 		t.Fatalf("Expected valid seq")
@@ -76,7 +76,7 @@ func TestBroadcast(t *testing.T) {
 	suspect := &SuspectEvent{From: 4, Id: 5, Incarnation: Seq(6)}
 	bcast.Event = suspect
 	suspectTag := bcast.Event.Tag()
-	if suspectTag.From != 4 || suspectTag.Id != 5 || suspectTag.Type != bcastSuspect {
+	if suspectTag.From != 5 || suspectTag.Id != 5 || suspectTag.Type != bcastSuspect {
 		t.Fatalf("Expected valid suspect tag")
 	} else if bcast.Event.Seq().Get() != Seq(6) {
 		t.Fatalf("Expected valid seq")
@@ -86,7 +86,7 @@ func TestBroadcast(t *testing.T) {
 	death := &DeathEvent{From: 7, Id: 8, Incarnation: Seq(9)}
 	bcast.Event = death
 	deathTag := bcast.Event.Tag()
-	if deathTag.From != 7 || deathTag.Id != 8 || deathTag.Type != bcastDeath {
+	if deathTag.From != 8 || deathTag.Id != 8 || deathTag.Type != bcastDeath {
 		t.Fatalf("Expected valid death tag")
 	} else if bcast.Event.Seq().Get() != Seq(9) {
 		t.Fatalf("Expected valid seq")

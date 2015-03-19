@@ -2,8 +2,8 @@ package swim
 
 // A broadcast describes an event to be broadcast to the group.
 type Broadcast struct {
-	Class    int            // Priority class of the broadcast
-	Attempts int            // Number of transmissions attempted
+	Class    uint           // Priority class of the broadcast
+	Attempts uint           // Number of transmissions attempted
 	Event    BroadcastEvent // The event to broadcast
 	Done     chan struct{}  // The channel on which to signal done
 }
@@ -17,7 +17,7 @@ type Broadcast struct {
 //
 // Thus, a broadcast with class 0 always has higher priority, regardless of
 // the number of transmission attempts.
-func (b *Broadcast) Priority() int {
+func (b *Broadcast) Priority() uint {
 	return b.Class * b.Attempts
 }
 

@@ -33,12 +33,12 @@ func (r *RTT) Deviation() time.Duration {
 }
 
 // Update the RTT estimate using a RTT sample.
-func (r *RTT) Sample(v time.Duration) {
-	r.SampleWith(v, 0.125, 0.25)
+func (r *RTT) Update(v time.Duration) {
+	r.UpdateWith(v, 0.125, 0.25)
 }
 
 // Update the RTT estimate using a RTT sample with the specified parameters.
-func (r *RTT) SampleWith(v time.Duration, a, b float64) {
+func (r *RTT) UpdateWith(v time.Duration, a, b float64) {
 	mean := atomic.LoadInt64(&r.mean)
 	dev := atomic.LoadInt64(&r.dev)
 
@@ -52,6 +52,6 @@ func (r *RTT) SampleWith(v time.Duration, a, b float64) {
 }
 
 // Calculate the estimated RTT.
-func (r *RTT) Timeout() time.Duration {
+func (r *RTT) Get() time.Duration {
 	return r.Mean() + 4*r.Deviation()
 }

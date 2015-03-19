@@ -3,7 +3,8 @@ package swim
 // A ping event probes a node. The timestamp is returned in the ack event by
 // the receiving node.
 type PingEvent struct {
-	Timestamp int64 // Local UNIX timestamp in nanoseconds at ping node
+	From      uint64 // The node sending this message
+	Timestamp int64  // Local UNIX timestamp in nanoseconds at ping node
 	// TODO: if Byzantine nodes are present, a signed timestamp will provide
 	// partial protection
 }
@@ -12,23 +13,27 @@ type PingEvent struct {
 // determine which ping the remote node is responding to and to measure the
 // round-trip time.
 type AckEvent struct {
-	Timestamp int64 // Local UNIX timestamp in nanoseconds at ping node
+	From      uint64 // The node sending this message
+	Timestamp int64  // Local UNIX timestamp in nanoseconds at ping node
 }
 
 // An indirect ping request asks an unrelated node to probe the target node.
-type RequestEvent struct {
-	Id        uint64   // ID of target node
-	Addrs     []string // Addresses for target node
-	Timestamp int64    // Local UNIX timestamp in nanoseconds at ping node
+type IndirectPingEvent struct {
+	From       uint64   // ID of requesting node
+	Id         uint64   // ID of target node
+	Addrs      []string // Addresses for target node
+	Timestamp0 int64    // Local UNIX timestamp in nanoseconds of requesting node
+	Timestamp1 int64    // Local UNIX timestamp in nanoseconds of servicing node
 }
 
 // An indirect ping response returns the successful indirect ping for a
 // target node. The timestamp is used to determine to which indirect ping
 // request the remote node is responding to. The timestamp cannot be used to
 // measure round-trip time due to the indirection.
-type ResponseEvent struct {
-	Id        uint64 // ID of target node
-	Timestamp int64  // Local UNIX timestamp in nanoseconds at ping node
+type IndirectAckEvent struct {
+	From       uint64 // ID of node servicing the indirect ping
+	Timestamp0 int64  // Local UNIX timestamp in nanoseconds of requesting node
+	Timestamp1 int64  // Local UNIX timestamp in nanoseconds of servicing node
 }
 
 const (
@@ -62,7 +67,7 @@ type AliveEvent struct {
 
 // Get the tag for the alive event.
 func (e *AliveEvent) Tag() BroadcastTag {
-	return BroadcastTag{e.From, e.Id, bcastAlive}
+	return BroadcastTag{e.Id, e.Id, bcastAlive}
 }
 
 // Get the sequence for the alive event.
@@ -79,7 +84,7 @@ type SuspectEvent struct {
 
 // Get the tag for the suspect event.
 func (e *SuspectEvent) Tag() BroadcastTag {
-	return BroadcastTag{e.From, e.Id, bcastSuspect}
+	return BroadcastTag{e.Id, e.Id, bcastSuspect}
 }
 
 // Get the sequence for the suspect event.
@@ -96,7 +101,7 @@ type DeathEvent struct {
 
 // Get the tag for the death event.
 func (e *DeathEvent) Tag() BroadcastTag {
-	return BroadcastTag{e.From, e.Id, bcastDeath}
+	return BroadcastTag{e.Id, e.Id, bcastDeath}
 }
 
 // Get the sequence for the death event.

@@ -3,17 +3,19 @@ package swim
 import (
 	"errors"
 	"testing"
+	"time"
 )
 
 func TestMailbox(t *testing.T) {
 	mms := 512
 	codec := newTestCodec()
 	transport := newTestTransport(mms)
-	broker := NewBroker(codec, transport)
+	broker := &Broker{Transport: transport, Codec: codec}
 
 	// test sending
 	node := &Node{Id: 12394}
-	msg := &Message{From: 12394, To: 90210, Ack: AckEvent{9}}
+	msg := &Message{From: 12394, To: 90210}
+	msg.AddEvent(&AckEvent{From: 12394, Timestamp: 9})
 	broker.DirectTo(node, msg)
 
 	// should have encoded message
@@ -32,55 +34,33 @@ func TestMailbox(t *testing.T) {
 		t.Fatalf("Mailbox did not use encoded message")
 	}
 
-	// with codec error before creating error channel
+	// with codec error
 	encodeError := errors.New("encode error")
 	codec.encodeErrs <- encodeError
-	broker.DirectTo(node, msg)
-	if encoded := <-codec.encode; encoded.Message != msg {
-		t.Fatalf("Mailbox did not provide codec with message")
-	} else if len(transport.to) != 0 {
-		t.Fatalf("Mailbox attempted to deliver message")
-	} else if len(transport.outbox) != 0 {
-		t.Fatalf("Mailbox attempted to deliver message")
-	}
-
-	broker.Errors = make(chan error, 1)
-
-	// with codec error
-	codec.encodeErrs <- encodeError
-	broker.DirectTo(node, msg)
-	if len(broker.Errors) == 0 || encodeError != <-broker.Errors {
+	if err := broker.DirectTo(node, msg); err != encodeError {
 		t.Fatalf("Mailbox did not send error")
 	} else if encoded := <-codec.encode; encoded.Message != msg {
 		t.Fatalf("Mailbox did not provide codec with message")
-	} else if len(transport.to) != 0 {
-		t.Fatalf("Mailbox attempted to deliver message")
-	} else if len(transport.outbox) != 0 {
+	} else if len(transport.to) != 0 || len(transport.outbox) != 0 {
 		t.Fatalf("Mailbox attempted to deliver message")
 	}
 
 	// with transport error
 	transportError := errors.New("transport error")
 	transport.err <- transportError
-	broker.DirectTo(node, msg)
-	if encoded := <-codec.encode; encoded.Message != msg {
-		t.Fatalf("Mailbox did not provide codec with message")
+	if err := broker.DirectTo(node, msg); err != transportError {
+		t.Fatalf("Mailbox did not provide transport with message")
 	} else if len(transport.to) == 0 {
 		t.Fatalf("Mailbox did not attempt to deliver message")
 	} else if len(transport.outbox) == 0 {
 		t.Fatalf("Mailbox did not attempted to deliver message")
-	} else if node != <-transport.to || encoded != <-transport.outbox {
+	} else if node != <-transport.to || <-codec.encode != <-transport.outbox {
 		t.Fatalf("Mailbox attempted to deliver the wrong message")
-	} else if len(broker.Errors) == 0 || transportError != <-broker.Errors {
-		t.Fatalf("Mailbox did not send error")
 	}
-
-	// start receiving
-	broker.Start()
 
 	// test receiving
 	transport.inbox <- encoded
-	if msg != <-broker.Inbox {
+	if m, err := broker.Recv(); err != nil || m != msg {
 		t.Fatalf("Mailbox did not receive message")
 	} else if encoded != <-codec.decode {
 		t.Fatalf("Mailbox did not decode message")
@@ -90,14 +70,11 @@ func TestMailbox(t *testing.T) {
 	decodeError := errors.New("decode error")
 	codec.decodeErrs <- decodeError
 	transport.inbox <- encoded
-	if decodeError != <-broker.Errors {
+	if _, err := broker.Recv(); err != decodeError {
 		t.Fatalf("Mailbox did not send error")
 	} else if encoded != <-codec.decode {
 		t.Fatalf("Mailbox did not decode message")
 	}
-
-	// stop receiving
-	broker.Stop()
 
 	// TODO: test with broadcasts
 	// TODO: test adding broadcasts
@@ -169,6 +146,26 @@ func (t *testTransport) SendTo(node *Node, message *CodedMessage) error {
 	return nil
 }
 
-func (t *testTransport) Inbox() <-chan *CodedMessage {
-	return t.inbox
+func (t *testTransport) Recv() (msg *CodedMessage, err error) {
+	if len(t.err) > 0 {
+		err = <-t.err
+	}
+	msg = <-t.inbox
+	return
+}
+
+func (t *testTransport) SetDeadline(d time.Time) error {
+	return nil
+}
+
+func (t *testTransport) SetReadDeadline(d time.Time) error {
+	return nil
+}
+
+func (t *testTransport) SetWriteDeadline(d time.Time) error {
+	return nil
+}
+
+func (t *testTransport) Close() error {
+	return nil
 }
