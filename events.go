@@ -1,10 +1,14 @@
 package swim
 
+import (
+	"time"
+)
+
 // A ping event probes a node. The timestamp is returned in the ack event by
 // the receiving node.
 type PingEvent struct {
-	From      uint64 // The node sending this message
-	Timestamp int64  // Local UNIX timestamp in nanoseconds at ping node
+	From      uint64    // The node sending this message
+	Timestamp time.Time // Local UNIX timestamp in nanoseconds at ping node
 	// TODO: if Byzantine nodes are present, a signed timestamp will provide
 	// partial protection
 }
@@ -13,17 +17,22 @@ type PingEvent struct {
 // determine which ping the remote node is responding to and to measure the
 // round-trip time.
 type AckEvent struct {
-	From      uint64 // The node sending this message
-	Timestamp int64  // Local UNIX timestamp in nanoseconds at ping node
+	From      uint64    // The node sending this message
+	Timestamp time.Time // Local UNIX timestamp in nanoseconds at ping node
 }
 
 // An indirect ping request asks an unrelated node to probe the target node.
+type IndirectPingRequestEvent struct {
+	From  uint64   // ID of requesting node
+	Id    uint64   // ID of target node
+	Addrs []string // Addresses for target node
+}
+
+// An indirect ping indirectly probes a node.
 type IndirectPingEvent struct {
-	From       uint64   // ID of requesting node
-	Id         uint64   // ID of target node
-	Addrs      []string // Addresses for target node
-	Timestamp0 int64    // Local UNIX timestamp in nanoseconds of requesting node
-	Timestamp1 int64    // Local UNIX timestamp in nanoseconds of servicing node
+	From      uint64    // ID of requesting node
+	Via       uint64    // ID of target node
+	Timestamp time.Time // Local UNIX timestamp in nanoseconds at ping node
 }
 
 // An indirect ping response returns the successful indirect ping for a
@@ -31,9 +40,9 @@ type IndirectPingEvent struct {
 // request the remote node is responding to. The timestamp cannot be used to
 // measure round-trip time due to the indirection.
 type IndirectAckEvent struct {
-	From       uint64 // ID of node servicing the indirect ping
-	Timestamp0 int64  // Local UNIX timestamp in nanoseconds of requesting node
-	Timestamp1 int64  // Local UNIX timestamp in nanoseconds of servicing node
+	From      uint64    // ID of node servicing the indirect ping
+	Via       uint64    // ID of target node
+	Timestamp time.Time // Local UNIX timestamp in nanoseconds at ping node
 }
 
 const (

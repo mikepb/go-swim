@@ -17,8 +17,7 @@ type CodedMessage struct {
 	Size    int      // The size of the message, if not byte-encoded
 }
 
-// Add an typed event to the message. If the event is a Ping or Ack, the
-// original Ping or Ack is replaced if it exists.
+// Add an typed event to the message.
 func (m *Message) AddEvent(event interface{}) {
 	m.Events = append(m.Events, event)
 }

@@ -15,7 +15,7 @@ func TestMailbox(t *testing.T) {
 	// test sending
 	node := &Node{Id: 12394}
 	msg := &Message{From: 12394, To: 90210}
-	msg.AddEvent(&AckEvent{From: 12394, Timestamp: 9})
+	msg.AddEvent(&AckEvent{From: 12394, Timestamp: time.Unix(0, 9)})
 	broker.DirectTo(node, msg)
 
 	// should have encoded message
