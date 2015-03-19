@@ -2,7 +2,7 @@ package swim
 
 const mbBufSizes = 8
 
-// Broker handles message transport and encoding.
+// Broker handles piggybacked broadcast messages, transport, and encoding.
 type Broker struct {
 	Codec          Codec      // The codec implementation to use
 	Transport      Transport  // The transport implementation to use
@@ -186,4 +186,18 @@ func (b *Broker) deliverError(err error) {
 	if b.Errors != nil {
 		b.Errors <- err
 	}
+}
+
+// Queue a broadcast event.
+func (b *Broker) Broadcast(event BroadcastEvent) {
+	b.bqueue.Push(&Broadcast{Class: 2, Event: event})
+}
+
+// Broadcast an event and wait for the broadcast to be removed from the
+// queue, either from invalidation or after reaching the broadcast
+// transmission limit.
+func (b *Broker) BroadcastSync(event BroadcastEvent) {
+	done := make(chan struct{})
+	b.bqueue.Push(&Broadcast{Class: 1, Event: event, Done: done})
+	<-done
 }

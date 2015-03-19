@@ -57,7 +57,15 @@ func (q *BroadcastQueue) Push(bcast *Broadcast) {
 	tag := bcast.Event.Tag()
 	if that, ok := q.sourceMap[tag]; ok {
 		if bcast.Invalidates(that) {
+
+			// signal we're done
+			if that.Done != nil {
+				that.Done <- struct{}{}
+			}
+
+			// replace broadcast
 			*that = *bcast
+
 		}
 	} else {
 		q.sourceMap[tag] = bcast
@@ -71,9 +79,17 @@ func (q *BroadcastQueue) Push(bcast *Broadcast) {
 // Remove the highest priority broadcast from the queue.
 func (q *BroadcastQueue) Pop() *Broadcast {
 	q.maybeSort()
+
+	// remove from queue
 	bcast := q.bcasts[0]
 	q.bcasts = q.bcasts[1:]
 	delete(q.sourceMap, bcast.Event.Tag())
+
+	// signal we're done
+	if bcast.Done != nil {
+		bcast.Done <- struct{}{}
+	}
+
 	return bcast
 }
 
@@ -82,6 +98,11 @@ func (q *BroadcastQueue) Prune(predicate func(b *Broadcast) bool) {
 	for i, b := range q.bcasts {
 		if predicate(b) {
 			q.bcasts[i] = nil
+
+			// signal we're done
+			if b.Done != nil {
+				b.Done <- struct{}{}
+			}
 		}
 	}
 	q.Init()

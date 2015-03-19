@@ -15,8 +15,9 @@ func TestBroadcastQueue(t *testing.T) {
 	}
 
 	// class 0 broadcast
+	done := make(chan struct{}, 1)
 	event0 := &SuspectEvent{From: 1, Id: 2, Incarnation: Seq(3)}
-	bcast0 := &Broadcast{Class: 0, Event: event0}
+	bcast0 := &Broadcast{Class: 0, Event: event0, Done: done}
 	bqueue.Push(bcast0)
 	if bqueue.Peek() != bcast0 {
 		t.Fatalf("Expected peek of broadcast 0")
@@ -30,6 +31,9 @@ func TestBroadcastQueue(t *testing.T) {
 		t.Log(bqueue)
 		t.Fatalf("Expected lenght of 0 got %v", l)
 	}
+
+	// go test will detect deadlock if we were not signalled
+	<-done
 
 	// class 1 broadcast
 	event1 := &SuspectEvent{From: 2, Id: 3, Incarnation: Seq(4)}
@@ -68,6 +72,9 @@ func TestBroadcastQueue(t *testing.T) {
 		t.Fatalf("Expected lenght of 0 got %v", l)
 	}
 
+	// go test will detect deadlock if we were not signalled
+	<-done
+
 	// class 0 and 1 broadcasts w/ attempts after insertion
 	bqueue.Push(bcast0)
 	bqueue.Push(bcast1)
@@ -92,6 +99,9 @@ func TestBroadcastQueue(t *testing.T) {
 		t.Fatalf("Expected lenght of 0 got %v", l)
 	}
 
+	// go test will detect deadlock if we were not signalled
+	<-done
+
 	// class 0 and 1 broadcasts w/ attempts before insertion
 	bqueue.Push(bcast0)
 	bqueue.Push(bcast1)
@@ -112,6 +122,9 @@ func TestBroadcastQueue(t *testing.T) {
 	} else if l := bqueue.Len(); l != 0 {
 		t.Fatalf("Expected lenght of 0 got %v", l)
 	}
+
+	// go test will detect deadlock if we were not signalled
+	<-done
 
 	// invalidation
 	event1p := &SuspectEvent{From: 2, Id: 3, Incarnation: Seq(5)}
@@ -139,6 +152,9 @@ func TestBroadcastQueue(t *testing.T) {
 	} else if l := bqueue.Len(); l != 0 {
 		t.Fatalf("Expected lenght of 0 got %v", l)
 	}
+
+	// go test will detect deadlock if we were not signalled
+	<-done
 
 	// three events
 	bcast1.Attempts = 11
@@ -172,6 +188,9 @@ func TestBroadcastQueue(t *testing.T) {
 		t.Fatalf("Expected lenght of 0 got %v", l)
 	}
 
+	// go test will detect deadlock if we were not signalled
+	<-done
+
 	// test prune
 	bqueue.Push(bcast1)
 	bqueue.Push(bcast0)
@@ -194,4 +213,7 @@ func TestBroadcastQueue(t *testing.T) {
 	} else if l := bqueue.Len(); l != 0 {
 		t.Fatalf("Expected lenght of 0 got %v", l)
 	}
+
+	// go test will detect deadlock if we were not signalled
+	<-done
 }

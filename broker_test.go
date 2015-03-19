@@ -100,6 +100,8 @@ func TestMailbox(t *testing.T) {
 	broker.Stop()
 
 	// TODO: test with broadcasts
+	// TODO: test adding broadcasts
+	// TODO: test adding broadcasts sync
 }
 
 type testCodec struct {
