@@ -7,14 +7,14 @@ import (
 // A broadcast queue implements a priority queue ordered on the number of
 // transmission attempts and the priority class of the broadcasts.
 type BroadcastQueue struct {
-	sourceMap map[bcastTag]*Broadcast // Broadcasts by tag for invalidation
-	bcasts    bcastQueue              // Broadcasts queue in list form
-	sorted    bool                    // Hint that the queue is sorted
+	sourceMap map[BroadcastTag]*Broadcast // Broadcasts by tag for invalidation
+	bcasts    bcastQueue                  // Broadcasts queue in list form
+	sorted    bool                        // Hint that the queue is sorted
 }
 
 func NewBroadcastQueue() *BroadcastQueue {
 	return &BroadcastQueue{
-		sourceMap: make(map[bcastTag]*Broadcast),
+		sourceMap: make(map[BroadcastTag]*Broadcast),
 	}
 }
 
@@ -54,7 +54,7 @@ func (q *BroadcastQueue) Peek() *Broadcast {
 func (q *BroadcastQueue) Push(bcast *Broadcast) {
 
 	// invalidate an existing broadcast or add it to the queue
-	tag := bcast.tag()
+	tag := bcast.Event.Tag()
 	if that, ok := q.sourceMap[tag]; ok {
 		if bcast.Invalidates(that) {
 			*that = *bcast
@@ -73,7 +73,7 @@ func (q *BroadcastQueue) Pop() *Broadcast {
 	q.maybeSort()
 	bcast := q.bcasts[0]
 	q.bcasts = q.bcasts[1:]
-	delete(q.sourceMap, bcast.tag())
+	delete(q.sourceMap, bcast.Event.Tag())
 	return bcast
 }
 

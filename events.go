@@ -31,12 +31,43 @@ type ResponseEvent struct {
 	Timestamp int64  // Local UNIX timestamp in nanoseconds at ping node
 }
 
+const (
+	_ = iota
+	bcastAlive
+	bcastSuspect
+	bcastDeath
+	bcastUser
+)
+
+// Broadcast tags are used to efficiently invalidate existing broadcasts.
+type BroadcastTag struct {
+	From uint64
+	Id   uint64
+	Type int
+}
+
+// A broadcast event exposes the sequence and tag methods.
+type BroadcastEvent interface {
+	Tag() BroadcastTag
+	Seq() *Seq
+}
+
 // An alive event indicates that a node is alive, joining the group, or
 // that its metadata (addresses and/or user data) has changed.
 type AliveEvent struct {
 	From        uint64 // ID of the node broadcasting this event
 	Node               // The alive node
 	Incarnation Seq    // Incarnation number of the node
+}
+
+// Get the tag for the alive event.
+func (e *AliveEvent) Tag() BroadcastTag {
+	return BroadcastTag{e.From, e.Id, bcastAlive}
+}
+
+// Get the sequence for the alive event.
+func (e *AliveEvent) Seq() *Seq {
+	return &e.Incarnation
 }
 
 // A suspect event indicates that a node is suspected of death.
@@ -46,6 +77,16 @@ type SuspectEvent struct {
 	Incarnation Seq    // Incarnation number of the node
 }
 
+// Get the tag for the suspect event.
+func (e *SuspectEvent) Tag() BroadcastTag {
+	return BroadcastTag{e.From, e.Id, bcastSuspect}
+}
+
+// Get the sequence for the suspect event.
+func (e *SuspectEvent) Seq() *Seq {
+	return &e.Incarnation
+}
+
 // A death event indicates that a node is confirmed dead.
 type DeathEvent struct {
 	From        uint64 // ID of the node broadcasting this event
@@ -53,10 +94,30 @@ type DeathEvent struct {
 	Incarnation Seq    // Incarnation number of the node
 }
 
+// Get the tag for the death event.
+func (e *DeathEvent) Tag() BroadcastTag {
+	return BroadcastTag{e.From, e.Id, bcastDeath}
+}
+
+// Get the sequence for the death event.
+func (e *DeathEvent) Seq() *Seq {
+	return &e.Incarnation
+}
+
 // A user event is an application-specific broadcast. The event is passed
 // directly to the client application.
 type UserEvent struct {
-	From uint64      // ID of the node broadcasting this event
-	Seq  Seq         // Sequence number of the event
-	Data interface{} // User-specific data associated with the node
+	From     uint64      // ID of the node broadcasting this event
+	Sequence Seq         // Sequence number of the event
+	Data     interface{} // User-specific data associated with the node
+}
+
+// Get the tag for the user event.
+func (e *UserEvent) Tag() BroadcastTag {
+	return BroadcastTag{e.From, uint64(e.Sequence), bcastUser}
+}
+
+// Get the sequence for the user event.
+func (e *UserEvent) Seq() *Seq {
+	return &e.Sequence
 }
