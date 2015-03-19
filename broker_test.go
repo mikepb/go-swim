@@ -6,15 +6,15 @@ import (
 )
 
 func TestMailbox(t *testing.T) {
-	mms := 928428
+	mms := 512
 	codec := newTestCodec()
 	transport := newTestTransport(mms)
-	mbox := NewMailbox(codec, transport)
+	broker := NewBroker(codec, transport)
 
 	// test sending
 	node := &Node{Id: 12394}
 	msg := &Message{From: 12394, To: 90210, Ack: AckEvent{9}}
-	mbox.SendTo(node, msg)
+	broker.DirectTo(node, msg)
 
 	// should have encoded message
 	if len(codec.encode) == 0 {
@@ -32,11 +32,24 @@ func TestMailbox(t *testing.T) {
 		t.Fatalf("Mailbox did not use encoded message")
 	}
 
-	// with codec error
+	// with codec error before creating error channel
 	encodeError := errors.New("encode error")
 	codec.encodeErrs <- encodeError
-	mbox.SendTo(node, msg)
-	if len(mbox.Errors) == 0 || encodeError != <-mbox.Errors {
+	broker.DirectTo(node, msg)
+	if encoded := <-codec.encode; encoded.Message != msg {
+		t.Fatalf("Mailbox did not provide codec with message")
+	} else if len(transport.to) != 0 {
+		t.Fatalf("Mailbox attempted to deliver message")
+	} else if len(transport.outbox) != 0 {
+		t.Fatalf("Mailbox attempted to deliver message")
+	}
+
+	broker.Errors = make(chan error, 1)
+
+	// with codec error
+	codec.encodeErrs <- encodeError
+	broker.DirectTo(node, msg)
+	if len(broker.Errors) == 0 || encodeError != <-broker.Errors {
 		t.Fatalf("Mailbox did not send error")
 	} else if encoded := <-codec.encode; encoded.Message != msg {
 		t.Fatalf("Mailbox did not provide codec with message")
@@ -49,7 +62,7 @@ func TestMailbox(t *testing.T) {
 	// with transport error
 	transportError := errors.New("transport error")
 	transport.err <- transportError
-	mbox.SendTo(node, msg)
+	broker.DirectTo(node, msg)
 	if encoded := <-codec.encode; encoded.Message != msg {
 		t.Fatalf("Mailbox did not provide codec with message")
 	} else if len(transport.to) == 0 {
@@ -58,16 +71,16 @@ func TestMailbox(t *testing.T) {
 		t.Fatalf("Mailbox did not attempted to deliver message")
 	} else if node != <-transport.to || encoded != <-transport.outbox {
 		t.Fatalf("Mailbox attempted to deliver the wrong message")
-	} else if len(mbox.Errors) == 0 || transportError != <-mbox.Errors {
+	} else if len(broker.Errors) == 0 || transportError != <-broker.Errors {
 		t.Fatalf("Mailbox did not send error")
 	}
 
 	// start receiving
-	mbox.Start()
+	broker.Start()
 
 	// test receiving
 	transport.inbox <- encoded
-	if msg != <-mbox.Inbox {
+	if msg != <-broker.Inbox {
 		t.Fatalf("Mailbox did not receive message")
 	} else if encoded != <-codec.decode {
 		t.Fatalf("Mailbox did not decode message")
@@ -77,19 +90,21 @@ func TestMailbox(t *testing.T) {
 	decodeError := errors.New("decode error")
 	codec.decodeErrs <- decodeError
 	transport.inbox <- encoded
-	if decodeError != <-mbox.Errors {
+	if decodeError != <-broker.Errors {
 		t.Fatalf("Mailbox did not send error")
 	} else if encoded != <-codec.decode {
 		t.Fatalf("Mailbox did not decode message")
 	}
 
 	// stop receiving
-	mbox.Stop()
+	broker.Stop()
 
 	// test max message length
-	if mlen := mbox.MaxMessageLen(); mlen != mms {
+	if mlen := broker.MaxMessageLen(); mlen != mms {
 		t.Fatalf("Expected max message length %v got %v", mms, mlen)
 	}
+
+	// TODO: test with broadcasts
 }
 
 type testCodec struct {
@@ -121,6 +136,7 @@ func (c *testCodec) Encode(message *CodedMessage) error {
 	if len(c.encodeErrs) > 0 {
 		return <-c.encodeErrs
 	}
+	message.Size = 16
 	return nil
 
 }

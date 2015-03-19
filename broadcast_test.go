@@ -20,7 +20,7 @@ func TestBroadcast(t *testing.T) {
 	}
 
 	attempt := func() {
-		bcast.Attempt()
+		bcast.Attempts += 1
 		attempts += 1
 		if c := bcast.Attempts; c != attempts {
 			t.Fatalf("Expected %v attempts got %v", attempts, c)

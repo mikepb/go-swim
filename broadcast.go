@@ -2,11 +2,10 @@ package swim
 
 // A broadcast describes an event to be broadcast to the group.
 type Broadcast struct {
-	Class    int             // Priority class of the broadcast
-	Attempts int             // Number of transmissions attempted
-	Event    interface{}     // The event to broadcast
-	Done     chan struct{}   // The channel on which to signal done
-	q        *BroadcastQueue // The broadcast queue holding this broadcast
+	Class    int           // Priority class of the broadcast
+	Attempts int           // Number of transmissions attempted
+	Event    interface{}   // The event to broadcast
+	Done     chan struct{} // The channel on which to signal done
 }
 
 // Calculate the overall priority for the broadcast. Broadcasts with lower
@@ -27,15 +26,7 @@ func (b *Broadcast) Invalidates(that *Broadcast) bool {
 	return b.tag() == that.tag() && that.seq().Compare(b.seq().Get()) < 0
 }
 
-// Record a transmission attempt, notifying the containing queue of the
-// change in the broadcast priority.
-func (b *Broadcast) Attempt() {
-	b.Attempts += 1
-	if b.q != nil {
-		b.q.Fix(b)
-	}
-}
-
+// Get the sequence number for the event.
 func (b *Broadcast) seq() *Seq {
 	switch e := b.Event.(type) {
 	case *AliveEvent:
@@ -63,14 +54,14 @@ const (
 	bcastUser
 )
 
+// Broadcast tags are used to efficiently invalidate existing broadcasts.
 type bcastTag struct {
 	From uint64
 	Id   uint64
 	Type int
 }
 
-// Create a tag for the broadcast, used to efficiently invalidate existing
-// broadcasts.
+// Create a tag for the broadcast.
 func (b *Broadcast) tag() (tag bcastTag) {
 
 	switch e := b.Event.(type) {

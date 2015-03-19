@@ -1,14 +1,15 @@
 package swim
 
 import (
-	"container/heap"
+	"sort"
 )
 
 // A broadcast queue implements a priority queue ordered on the number of
 // transmission attempts and the priority class of the broadcasts.
 type BroadcastQueue struct {
-	sourceMap map[bcastTag]*Broadcast
-	bcasts    bcastQueue
+	sourceMap map[bcastTag]*Broadcast // Broadcasts by tag for invalidation
+	bcasts    bcastQueue              // Broadcasts queue in list form
+	sorted    bool                    // Hint that the queue is sorted
 }
 
 func NewBroadcastQueue() *BroadcastQueue {
@@ -17,14 +18,27 @@ func NewBroadcastQueue() *BroadcastQueue {
 	}
 }
 
-// Initialize the priority queue by fixing the heap invariants.
+// Initialize the priority queue by fixing the sort order.
 func (q *BroadcastQueue) Init() {
-	heap.Init(&q.bcasts)
+	sort.Stable(q.bcasts)
+
+	// prune removed broadcasts
+	end := len(q.bcasts)
+	for end > 0 && q.bcasts[end-1] == nil {
+		end -= 1
+	}
+	q.bcasts = q.bcasts[:end]
+
+	// hint that queue is sorted
+	q.sorted = true
 }
 
-// Fix the heap invariants resulting from a change to the given broadcast.
-func (q *BroadcastQueue) Fix(bcast *Broadcast) {
-	q.Init()
+// Maybe sort the queue if the sorted hint is false.
+func (q *BroadcastQueue) maybeSort() {
+	if !q.sorted {
+		q.Init()
+		q.sorted = true
+	}
 }
 
 // Return the highest priority broadcast without removing it.
@@ -32,39 +46,52 @@ func (q *BroadcastQueue) Peek() *Broadcast {
 	if len(q.bcasts) == 0 {
 		return nil
 	}
+	q.maybeSort()
 	return q.bcasts[0]
 }
 
 // Push a broadcast onto the queue.
 func (q *BroadcastQueue) Push(bcast *Broadcast) {
 
-	// broadcast does not belong to a queue or it belongs to this one
-	if bcast.q != nil && bcast.q != q {
-		panic("broadcast belongs to a different queue")
-	}
-
-	// this broadcast now belongs to this queue
-	bcast.q = q
-
 	// invalidate an existing broadcast or add it to the queue
 	tag := bcast.tag()
 	if that, ok := q.sourceMap[tag]; ok {
 		if bcast.Invalidates(that) {
 			*that = *bcast
-			q.Init()
 		}
 	} else {
 		q.sourceMap[tag] = bcast
 		q.bcasts = append(q.bcasts, bcast)
 	}
+
+	// hint that queue is unsorted
+	q.sorted = false
 }
 
 // Remove the highest priority broadcast from the queue.
 func (q *BroadcastQueue) Pop() *Broadcast {
-	bcast := heap.Pop(&q.bcasts).(*Broadcast)
-	bcast.q = nil
+	q.maybeSort()
+	bcast := q.bcasts[0]
+	q.bcasts = q.bcasts[1:]
 	delete(q.sourceMap, bcast.tag())
 	return bcast
+}
+
+// Remove the broadcasts for which the predicate returns true.
+func (q *BroadcastQueue) Prune(predicate func(b *Broadcast) bool) {
+	for i, b := range q.bcasts {
+		if predicate(b) {
+			q.bcasts[i] = nil
+		}
+	}
+	q.Init()
+}
+
+// Get the queue as a list ordered by priority. If any broadcasts in the
+// list are modified, the caller is responsible for calling q.Init().
+func (q *BroadcastQueue) List() []*Broadcast {
+	q.maybeSort()
+	return q.bcasts
 }
 
 // Get the number of queued broadcasts.
@@ -72,6 +99,7 @@ func (q *BroadcastQueue) Len() int {
 	return len(q.bcasts)
 }
 
+// Private type for sorting.
 type bcastQueue []*Broadcast
 
 // Get the number of queued broadcasts.
@@ -79,28 +107,25 @@ func (q bcastQueue) Len() int {
 	return len(q)
 }
 
-// Determine if the broadcast at index i has a lower priority than the
-// broadcast at index j.
+// Determine if the broadcast at index i has a higher priority (smaller
+// value) than the broadcast at index j.
 func (q bcastQueue) Less(i, j int) bool {
+
+	// handle nil for pruning
+	if q[i] == nil {
+		if q[j] == nil {
+			return i < j
+		}
+		return false
+	}
+	if q[j] == nil {
+		return true
+	}
+
 	return q[i].Priority() < q[j].Priority()
 }
 
 // Swap the broadcast at index i with the broadcast at index j.
 func (q bcastQueue) Swap(i, j int) {
 	q[i], q[j] = q[j], q[i]
-}
-
-// Implementation of heap.Interface.Pop().
-func (q *bcastQueue) Push(x interface{}) {
-	bcast := x.(*Broadcast)
-	*q = append(*q, bcast)
-}
-
-// Implementation of heap.Interface.Pop().
-func (q *bcastQueue) Pop() interface{} {
-	old := *q
-	l := len(old) - 1
-	b := old[l]
-	*q = old[:l]
-	return b
 }

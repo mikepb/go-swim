@@ -22,6 +22,8 @@ func TestBroadcastQueue(t *testing.T) {
 		t.Fatalf("Expected peek of broadcast 0")
 	} else if bqueue.Len() != 1 {
 		t.Fatalf("Expected lenght of 1")
+	} else if bqueue.List()[0] != bcast0 {
+		t.Fatalf("Expected list of broadcast 0")
 	} else if bqueue.Pop() != bcast0 {
 		t.Fatalf("Expected pop of broadcast 0")
 	} else if l := bqueue.Len(); l != 0 {
@@ -35,6 +37,8 @@ func TestBroadcastQueue(t *testing.T) {
 	bqueue.Push(bcast1)
 	if bqueue.Peek() != bcast1 {
 		t.Fatalf("Expected peek of broadcast 1")
+	} else if bqueue.List()[0] != bcast1 {
+		t.Fatalf("Expected list of broadcast 1")
 	} else if bqueue.Len() != 1 {
 		t.Fatalf("Expected lenght of 1")
 	} else if bqueue.Pop() != bcast1 {
@@ -43,29 +47,23 @@ func TestBroadcastQueue(t *testing.T) {
 		t.Fatalf("Expected lenght of 0 got %v", l)
 	}
 
-	// class 0 and 1 broadcasts
+	// class 0 and 1 broadcasts w/ stable sort
 	bqueue.Push(bcast0)
 	bqueue.Push(bcast1)
 	if bqueue.Len() != 2 {
 		t.Fatalf("Expected lenght of 2")
-	} else if p := bqueue.Peek(); p != bcast0 && p != bcast1 {
-		t.Fatalf("Expected peek of broadcast 0 or 1")
-	} else if bqueue.Pop() != p {
-		t.Fatalf("Expected pop of broadcast %v", p)
+	} else if bqueue.List()[0] != bcast0 || bqueue.List()[1] != bcast1 {
+		t.Fatalf("Expected list of broadcast 0 and 1")
+	} else if bqueue.Peek() != bcast0 {
+		t.Fatalf("Expected peek of broadcast 0")
+	} else if bqueue.Pop() != bcast0 {
+		t.Fatalf("Expected pop of broadcast 0")
 	} else if l := bqueue.Len(); l != 1 {
 		t.Fatalf("Expected lenght of 1 got %v", l)
-	} else if p == bcast0 {
-		if bqueue.Peek() != bcast1 {
-			t.Fatalf("Expected peek of broadcast 1")
-		} else if bqueue.Pop() != bcast1 {
-			t.Fatalf("Expected pop of broadcast 1")
-		}
-	} else if p == bcast1 {
-		if bqueue.Peek() != bcast0 {
-			t.Fatalf("Expected peek of broadcast 0")
-		} else if bqueue.Pop() != bcast0 {
-			t.Fatalf("Expected pop of broadcast 0")
-		}
+	} else if bqueue.Peek() != bcast1 {
+		t.Fatalf("Expected peek of broadcast 1")
+	} else if bqueue.Pop() != bcast1 {
+		t.Fatalf("Expected pop of broadcast 1")
 	} else if l := bqueue.Len(); l != 0 {
 		t.Fatalf("Expected lenght of 0 got %v", l)
 	}
@@ -73,10 +71,13 @@ func TestBroadcastQueue(t *testing.T) {
 	// class 0 and 1 broadcasts w/ attempts after insertion
 	bqueue.Push(bcast0)
 	bqueue.Push(bcast1)
-	bcast0.Attempt()
-	bcast1.Attempt()
+	bcast0.Attempts += 1
+	bcast1.Attempts += 1
+	bqueue.Init()
 	if bqueue.Len() != 2 {
 		t.Fatalf("Expected lenght of 2")
+	} else if bqueue.List()[0] != bcast0 || bqueue.List()[1] != bcast1 {
+		t.Fatalf("Expected list of broadcast 0 and 1")
 	} else if bqueue.Peek() != bcast0 {
 		t.Fatalf("Expected peek of broadcast 0")
 	} else if bqueue.Pop() != bcast0 {
@@ -96,6 +97,8 @@ func TestBroadcastQueue(t *testing.T) {
 	bqueue.Push(bcast1)
 	if bqueue.Len() != 2 {
 		t.Fatalf("Expected lenght of 2")
+	} else if bqueue.List()[0] != bcast0 || bqueue.List()[1] != bcast1 {
+		t.Fatalf("Expected list of broadcast 0 and 1")
 	} else if bqueue.Peek() != bcast0 {
 		t.Fatalf("Expected peek of broadcast 0")
 	} else if bqueue.Pop() != bcast0 {
@@ -116,8 +119,11 @@ func TestBroadcastQueue(t *testing.T) {
 	bqueue.Push(bcast0)
 	bqueue.Push(bcast1)
 	bqueue.Push(bcast1p)
+	bqueue.Init()
 	if bqueue.Len() != 2 {
 		t.Fatalf("Expected lenght of 2")
+	} else if bqueue.List()[0] != bcast0 || bqueue.List()[1] != bcast1 {
+		t.Fatalf("Expected list of broadcast 0 and 1")
 	} else if bqueue.Peek() != bcast0 {
 		t.Fatalf("Expected peek of broadcast 0")
 	} else if bqueue.Pop() != bcast0 {
@@ -141,13 +147,39 @@ func TestBroadcastQueue(t *testing.T) {
 	bqueue.Push(bcast0)
 	bqueue.Push(bcast1)
 	bqueue.Push(bcast2)
+	bqueue.Init()
 	if bqueue.Len() != 3 {
 		t.Fatalf("Expected lenght of 3")
+	} else if bqueue.List()[0] != bcast0 || bqueue.List()[1] != bcast2 || bqueue.List()[2] != bcast1 {
+		t.Fatalf("Expected list of broadcast 0, 2, 1")
 	} else if bqueue.Peek() != bcast0 {
 		t.Fatalf("Expected peek of broadcast 0")
 	} else if bqueue.Pop() != bcast0 {
 		t.Fatalf("Expected pop of broadcast 0")
 	} else if l := bqueue.Len(); l != 2 {
+		t.Fatalf("Expected lenght of 2 got %v", l)
+	} else if bqueue.Peek() != bcast2 {
+		t.Fatalf("Expected peek of broadcast 2")
+	} else if bqueue.Pop() != bcast2 {
+		t.Fatalf("Expected pop of broadcast 2")
+	} else if l := bqueue.Len(); l != 1 {
+		t.Fatalf("Expected lenght of 1 got %v", l)
+	} else if bqueue.Peek() != bcast1 {
+		t.Fatalf("Expected peek of broadcast 1")
+	} else if bqueue.Pop() != bcast1 {
+		t.Fatalf("Expected pop of broadcast 1")
+	} else if l := bqueue.Len(); l != 0 {
+		t.Fatalf("Expected lenght of 0 got %v", l)
+	}
+
+	// test prune
+	bqueue.Push(bcast1)
+	bqueue.Push(bcast0)
+	bqueue.Push(bcast2)
+	bqueue.Prune(func(b *Broadcast) bool {
+		return b == bcast0
+	})
+	if l := bqueue.Len(); l != 2 {
 		t.Fatalf("Expected lenght of 2 got %v", l)
 	} else if bqueue.Peek() != bcast2 {
 		t.Fatalf("Expected peek of broadcast 2")
