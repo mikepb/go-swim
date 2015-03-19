@@ -5,34 +5,38 @@ import (
 )
 
 // A ping event probes a node. The timestamp is returned in the ack event by
-// the receiving node.
+// the receiving node. The requesting node sends its return addresses and
+// incarnation number for anti-entropy.
 type PingEvent struct {
-	From      uint64    // The node sending this message
-	Timestamp time.Time // Local UNIX timestamp in nanoseconds at ping node
+	From        uint64    // ID of requesting node
+	Addrs       []string  // Addresses of sending node
+	Incarnation Seq       // Requesting node incarnation number for anti-entropy
+	Timestamp   time.Time // Local time at ping node
 	// TODO: if Byzantine nodes are present, a signed timestamp will provide
 	// partial protection
 }
 
 // An ack event acknowledges a ping. The returned timestamp is used to
 // determine which ping the remote node is responding to and to measure the
-// round-trip time.
+// round-trip time. The last known incarnation number of the requesting node
+// is returned by the responding node for anti-entropy.
 type AckEvent struct {
-	From      uint64    // The node sending this message
-	Timestamp time.Time // Local UNIX timestamp in nanoseconds at ping node
+	From        uint64    // ID of requesting node
+	Incarnation Seq       // Last known incarnation number of requesting node
+	Timestamp   time.Time // Local time at ping node
 }
 
 // An indirect ping request asks an unrelated node to probe the target node.
 type IndirectPingRequestEvent struct {
 	From  uint64   // ID of requesting node
 	Id    uint64   // ID of target node
-	Addrs []string // Addresses for target node
+	Addrs []string // Addresses of target node
 }
 
 // An indirect ping indirectly probes a node.
 type IndirectPingEvent struct {
-	From      uint64    // ID of requesting node
-	Via       uint64    // ID of target node
-	Timestamp time.Time // Local UNIX timestamp in nanoseconds at ping node
+	PingEvent
+	Via uint64 // ID of the node requesting the indirect probe
 }
 
 // An indirect ping response returns the successful indirect ping for a
@@ -40,9 +44,8 @@ type IndirectPingEvent struct {
 // request the remote node is responding to. The timestamp cannot be used to
 // measure round-trip time due to the indirection.
 type IndirectAckEvent struct {
-	From      uint64    // ID of node servicing the indirect ping
-	Via       uint64    // ID of target node
-	Timestamp time.Time // Local UNIX timestamp in nanoseconds at ping node
+	AckEvent
+	Via uint64 // ID of the node requesting the indirect probe
 }
 
 const (
@@ -69,9 +72,8 @@ type BroadcastEvent interface {
 // An alive event indicates that a node is alive, joining the group, or
 // that its metadata (addresses and/or user data) has changed.
 type AliveEvent struct {
-	From        uint64 // ID of the node broadcasting this event
-	Node               // The alive node
-	Incarnation Seq    // Incarnation number of the node
+	From uint64 // ID of the node broadcasting this event
+	Node        // The alive node
 }
 
 // Get the tag for the alive event.

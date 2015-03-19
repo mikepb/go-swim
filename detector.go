@@ -127,8 +127,10 @@ func (d *Detector) probe(t time.Time) (nodes []*InternalNode) {
 	for i := 0; i < kProbeCount && i < d.nodes.Len(); i += 1 {
 		if node := d.nodes.Next(); node != nil {
 			d.sendTo(&node.Node, &PingEvent{
-				From:      d.localNode.Id,
-				Timestamp: t,
+				From:        d.localNode.Id,
+				Addrs:       d.localNode.Addrs,
+				Incarnation: d.localNode.Incarnation,
+				Timestamp:   t,
 			})
 			nodes = append(nodes, node)
 		}

@@ -63,7 +63,7 @@ func TestBroadcast(t *testing.T) {
 	priority(200)
 
 	// test alive
-	alive := &AliveEvent{From: 1, Node: Node{Id: 2}, Incarnation: Seq(3)}
+	alive := &AliveEvent{From: 1, Node: Node{Id: 2, Incarnation: Seq(3)}}
 	bcast.Event = alive
 	aliveTag := bcast.Event.Tag()
 	if aliveTag.From != 2 || aliveTag.Id != 2 || aliveTag.Type != bcastAlive {
