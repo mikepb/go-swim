@@ -11,7 +11,7 @@ type PingEvent struct {
 	From        uint64    // ID of requesting node
 	Addrs       []string  // Addresses of sending node
 	Incarnation Seq       // Requesting node incarnation number for anti-entropy
-	Timestamp   time.Time // Local time at ping node
+	Time        time.Time // Local time at ping node
 	// TODO: if Byzantine nodes are present, a signed timestamp will provide
 	// partial protection
 }
@@ -23,20 +23,22 @@ type PingEvent struct {
 type AckEvent struct {
 	From        uint64    // ID of requesting node
 	Incarnation Seq       // Last known incarnation number of requesting node
-	Timestamp   time.Time // Local time at ping node
+	Time        time.Time // Local time at ping node
 }
 
 // An indirect ping request asks an unrelated node to probe the target node.
 type IndirectPingRequestEvent struct {
-	From  uint64   // ID of requesting node
-	Id    uint64   // ID of target node
-	Addrs []string // Addresses of target node
+	From  uint64    // ID of requesting node
+	Id    uint64    // ID of target node
+	Addrs []string  // Addresses of target node
+	Time  time.Time // Local time at requesting node
 }
 
 // An indirect ping indirectly probes a node.
 type IndirectPingEvent struct {
 	PingEvent
-	Via uint64 // ID of the node requesting the indirect probe
+	Via     uint64    // ID of the node requesting the indirect probe
+	ViaTime time.Time // Local time at requesting node
 }
 
 // An indirect ping response returns the successful indirect ping for a
@@ -45,7 +47,8 @@ type IndirectPingEvent struct {
 // measure round-trip time due to the indirection.
 type IndirectAckEvent struct {
 	AckEvent
-	Via uint64 // ID of the node requesting the indirect probe
+	Via     uint64    // ID of the node requesting the indirect probe
+	ViaTime time.Time // Local time at requesting node
 }
 
 const (

@@ -2,13 +2,14 @@ package swim
 
 import (
 	"log"
-	"net"
 	"time"
 )
 
 const kBufferSize = 8
 const kProbeCount = 1
 
+// Detector implements the SWIM failure detector. Remember to close the
+// detector before discarding it to free resources.
 type Detector struct {
 	sequence    Seq
 	incarnation Seq
@@ -19,8 +20,12 @@ type Detector struct {
 	nodes     SelectionList
 	nodeMap   map[uint64]*InternalNode
 
-	state chan bool
-	inbox chan interface{}
+	// States for signaling the event loop.
+	state    int
+	started  bool
+	stopping chan bool
+	stopped  chan bool
+	events   chan interface{}
 
 	ProbeInterval  time.Duration
 	ProbeTimeout   time.Duration
@@ -29,34 +34,29 @@ type Detector struct {
 	Logger         *log.Logger
 }
 
-func NewDetector() *Detector {
-	d := &Detector{
-		state: make(chan bool, 1),
-		inbox: make(chan interface{}, kBufferSize),
-	}
-
-	// empty = running
-	// true  = stop signal
-	// false = stopped
-	d.state <- false
-
-	return d
-}
-
-// Broadcast an event and wait for the broadcast to be removed from the
-// queue, either from invalidation or after reaching the broadcast
-// transmission limit.
-func (d *Detector) Broadcast(msg BroadcastEvent) {
-	d.broker.BroadcastSync(msg)
-}
-
 // Start the failure detector.
 func (d *Detector) Start() {
 
+	// initialize
+	if d.stopping == nil {
+
+		// create channels
+		d.stopping = make(chan bool, 1)
+		d.stopped = make(chan bool, 1)
+		d.events = make(chan interface{}, kBufferSize)
+	}
+
 	// don't call multiple times!
-	if len(d.state) == 0 || <-d.state {
+	if d.started {
 		panic("already started")
 	}
+
+	// flag as started
+	d.state += 1
+	d.started = true
+
+	// receive messages asynchronously
+	go d.recv()
 
 	// run everything in a single goroutine event loop to avoid locks
 	// (except for channel locks)
@@ -67,27 +67,44 @@ func (d *Detector) Start() {
 func (d *Detector) Stop() {
 
 	// don't call multiple times!
-	if len(d.state) != 0 {
-		panic("already stopped")
+	if !d.started {
+		panic("not started")
 	}
 
 	// signal goroutine to stop
-	d.state <- true
+	d.stopping <- true
 
 	// receive acknowledgement
-	d.state <- <-d.state
+	<-d.stopped
+
+	// the message receiver won't stop until a message is received...
+	d.started = false
 }
 
 // Stop the failure detector and close the underlying transport.
 func (d *Detector) Close() error {
 
 	// stop if running
-	if len(d.state) == 0 {
+	if d.started {
 		d.Stop()
 	}
 
 	// close the broker
 	return d.broker.Close()
+}
+
+// Broadcast an event asynchronously. If the detector is not running, the
+// broadcast will be sent when the detector is started.
+func (d *Detector) Broadcast(msg BroadcastEvent) {
+	d.broker.Broadcast(msg)
+}
+
+// Broadcast an event and wait for the broadcast to be removed from the
+// queue, either from invalidation or after reaching the broadcast
+// transmission limit. If the detector is not running or there are no nodes
+// other than the local node, the call will block indefinitely.
+func (d *Detector) BroadcastSync(msg BroadcastEvent) {
+	d.broker.BroadcastSync(msg)
 }
 
 // Run the failure detector loop.
@@ -96,14 +113,20 @@ func (d *Detector) loop() {
 	var lastTick time.Time
 
 	ticker := time.NewTicker(d.ProbeInterval)
+	defer ticker.Stop()
+
 	timer := time.NewTimer(0)
 	timer.Stop()
+	defer timer.Stop()
 
 	for {
 		select {
-		case <-d.state: // stop signal
-			d.state <- false
+		case <-d.stopping: // stop signal
+			d.stopped <- false
 			return
+
+		case event := <-d.events: // process events
+			d.handle(event)
 
 		case <-timer.C: // probe timeout
 			if !lastTick.IsZero() && nodes != nil {
@@ -117,9 +140,6 @@ func (d *Detector) loop() {
 			nodes = d.probe(t)
 			timer.Reset(d.ProbeTimeout)
 			lastTick = t
-
-		default: // read from network
-			d.recv()
 		}
 	}
 }
@@ -132,7 +152,7 @@ func (d *Detector) probe(t time.Time) (nodes []*InternalNode) {
 				From:        d.localNode.Id,
 				Addrs:       d.localNode.Addrs,
 				Incarnation: d.localNode.Incarnation,
-				Timestamp:   t,
+				Time:        t,
 			})
 			nodes = append(nodes, node)
 		}
@@ -173,31 +193,21 @@ func (d *Detector) suspect(t time.Time, nodes []*InternalNode) {
 // Receive messages from the network.
 func (d *Detector) recv() {
 
-	// set deadline
-	t := time.Now().Add(time.Millisecond)
-	if err := d.broker.Transport.SetReadDeadline(t); err != nil {
-		d.Logger.Printf("[swim:detector:recv] %v", err)
-		return
-	}
+	// loop while we're active
+	// the state prevents multiple concurrent goroutines
+	for state := d.state; d.started && d.state == state; {
 
-	// receive message from broker
-	msg, err := d.broker.Recv()
-	if err != nil {
-		switch err := err.(type) {
-		case net.Error:
-			if !err.Timeout() {
-				d.Logger.Printf("[swim:detector:recv] %v", err)
-			}
-		default:
+		// receive message from broker
+		msg, err := d.broker.Recv()
+		if err != nil {
 			d.Logger.Printf("[swim:detector:recv] %v", err)
 		}
-		return
-	}
 
-	// handle the events contained in the message
-	if msg.To == d.localNode.Id {
-		for _, event := range msg.Events {
-			d.handle(event)
+		// queue events
+		if msg.To == d.localNode.Id {
+			for _, event := range msg.Events {
+				d.events <- event
+			}
 		}
 	}
 }
@@ -212,7 +222,7 @@ func (d *Detector) handle(event interface{}) {
 	case *SuspectEvent:
 	case *DeathEvent:
 	case *UserEvent:
-		d.inbox <- event
+		_ = event
 	}
 }
 

@@ -1,9 +1,5 @@
 package swim
 
-import (
-	"time"
-)
-
 // A transport implements the transport layer for the failure detector.
 type Transport interface {
 
@@ -28,13 +24,4 @@ type Transport interface {
 
 	// Close the transport.
 	Close() error
-
-	// See net.Conn.SetDeadline()
-	SetDeadline(t time.Time) error
-
-	// See net.Conn.SetReadDeadline()
-	SetReadDeadline(t time.Time) error
-
-	// See net.Conn.SetWriteDeadline()
-	SetWriteDeadline(t time.Time) error
 }
