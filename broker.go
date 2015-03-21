@@ -2,12 +2,11 @@ package swim
 
 // Broker handles piggybacked broadcast messages, transport, and encoding.
 type Broker struct {
-	Transport            // The transport implementation to use
-	Codec          Codec // The codec implementation to use
-	BroadcastLimit uint  // The broadcast transmission limit
-
-	bqueue    BroadcastQueue // Broadcast queue
-	bEstimate float64        // Estimate of the number of broadcasts to send
+	Transport                     // The transport implementation to use
+	Codec          Codec          // The codec implementation to use
+	BroadcastLimit uint           // The broadcast transmission limit
+	Broadcasts     BroadcastQueue // Broadcast queue
+	bEstimate      float64        // Estimate of the number of broadcasts to send
 }
 
 // Receive and decode a message from the network.
@@ -28,8 +27,9 @@ func (b *Broker) Recv() (*Message, error) {
 	return coded.Message, nil
 }
 
-// Send a direct message to the given node without piggybacking broadcasts.
-func (b *Broker) DirectTo(node *Node, msg *Message) error {
+// Send a direct message to the node represented by the given address
+// without piggybacking broadcasts.
+func (b *Broker) DirectTo(addrs []string, msg *Message) error {
 	coded := &CodedMessage{Message: msg}
 
 	// encode the message without piggybacked broadcasts
@@ -38,12 +38,12 @@ func (b *Broker) DirectTo(node *Node, msg *Message) error {
 	}
 
 	// send the message
-	return b.Transport.SendTo(node, coded)
+	return b.Transport.SendTo(addrs, coded)
 }
 
-// Send a message to the given node. Broadcasts are piggybacked to the
-// message up to the message size limit.
-func (b *Broker) SendTo(node *Node, msg *Message) error {
+// Send a message to the node represented by the given addresses. Broadcasts
+// are piggybacked to the message up to the message size limit.
+func (b *Broker) SendTo(addrs []string, msg *Message) error {
 	coded := &CodedMessage{Message: msg}
 
 	// encode the message with piggybacked broadcasts
@@ -52,19 +52,19 @@ func (b *Broker) SendTo(node *Node, msg *Message) error {
 	}
 
 	// send the message
-	return b.Transport.SendTo(node, coded)
+	return b.Transport.SendTo(addrs, coded)
 }
 
 // Encode the given message after piggybacking broadcasts.
 func (b *Broker) encodeWithBroadcasts(coded *CodedMessage) error {
 
 	// attach broadcasts
-	if bcasts := b.bqueue.List(); len(bcasts) > 0 {
+	if bcasts := b.Broadcasts.List(); len(bcasts) > 0 {
 		max := -1
 
 		// limit number of piggybacked broadcasts if supported
 		if b.Transport.MaxMessageLen() > 0 && b.bEstimate > 0.0 {
-			max = int(b.bEstimate) - len(coded.Message.Events)
+			max = int(b.bEstimate) - len(coded.Message.Events())
 
 			// attach at least one event
 			if max < 1 {
@@ -88,7 +88,7 @@ func (b *Broker) encodeWithBroadcasts(coded *CodedMessage) error {
 		}
 
 		// prune the queue and re-sort
-		b.bqueue.Prune(func(bcast *Broadcast) bool {
+		b.Broadcasts.Prune(func(bcast *Broadcast) bool {
 			// keep old broadcasts to prevent rebroadcasting indefinitely
 			return bcast.Attempts >= 3*b.BroadcastLimit
 		})
@@ -105,7 +105,7 @@ func (b *Broker) encodeWithBroadcasts(coded *CodedMessage) error {
 		// estimate number of events supported
 		maxSize := float64(b.Transport.MaxMessageLen())
 		size := float64(coded.Size)
-		count := float64(len(coded.Message.Events))
+		count := float64(len(coded.Message.Events()))
 		b.bEstimate = 0.75*b.bEstimate + 0.25*(maxSize/(size/count))
 
 	} else {
@@ -120,14 +120,12 @@ func (b *Broker) encodeWithBroadcasts(coded *CodedMessage) error {
 
 // Queue a broadcast event.
 func (b *Broker) Broadcast(event BroadcastEvent) {
-	b.bqueue.Push(&Broadcast{Class: 2, Event: event})
+	b.Broadcasts.Push(&Broadcast{Class: 2, Event: event})
 }
 
-// Broadcast an event and wait for the broadcast to be removed from the
-// queue, either from invalidation or after reaching the broadcast
-// transmission limit.
-func (b *Broker) BroadcastSync(event BroadcastEvent) {
-	done := make(chan struct{})
-	b.bqueue.Push(&Broadcast{Class: 1, Event: event, Done: done})
-	<-done
+// Broadcast an event and notify on the done channel when the broadcast is
+// removed from the queue, either from invalidation or after reaching the
+// broadcast transmission limit.
+func (b *Broker) BroadcastSync(event BroadcastEvent, done chan struct{}) {
+	b.Broadcasts.Push(&Broadcast{Class: 1, Event: event, Done: done})
 }

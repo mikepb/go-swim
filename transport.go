@@ -11,11 +11,11 @@ type Transport interface {
 	// unlimited message length.
 	MaxMessageLen() int
 
-	// Send the given message to the node. The message is guaranteed to
+	// Send the given message to the addresses. The message is guaranteed to
 	// already have been encoded by an encoder. The transport may support
 	// sending the Go value directly, ignoring the encoded byte value. The
 	// operation should timeout if the write deadline is set.
-	SendTo(node *Node, message *CodedMessage) error
+	SendTo(addr []string, message *CodedMessage) error
 
 	// Receive a messages from the network, blocking until the next message
 	// arrives. If the transport is closed, an appropriate error should be

@@ -65,8 +65,8 @@ func TestXorSorter(t *testing.T) {
 	}
 }
 
-func makeTestNodes() ([]*InternalNode, *InternalNode) {
-	localNode := &InternalNode{Node: Node{Id: 8}}
+func makeTestNodes() ([]*InternalNode, *Node) {
+	localNode := &Node{Id: 8}
 	nodes := []*InternalNode{
 		&InternalNode{Node: Node{Id: 6}},
 		&InternalNode{Node: Node{Id: 2}},

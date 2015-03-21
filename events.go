@@ -9,11 +9,8 @@ import (
 // incarnation number for anti-entropy.
 type PingEvent struct {
 	From        uint64    // ID of requesting node
-	Addrs       []string  // Addresses of sending node
 	Incarnation Seq       // Requesting node incarnation number for anti-entropy
 	Time        time.Time // Local time at ping node
-	// TODO: if Byzantine nodes are present, a signed timestamp will provide
-	// partial protection
 }
 
 // An ack event acknowledges a ping. The returned timestamp is used to
@@ -28,17 +25,23 @@ type AckEvent struct {
 
 // An indirect ping request asks an unrelated node to probe the target node.
 type IndirectPingRequestEvent struct {
-	From  uint64    // ID of requesting node
-	Id    uint64    // ID of target node
-	Addrs []string  // Addresses of target node
-	Time  time.Time // Local time at requesting node
+	From              uint64    // ID of requesting node
+	Addrs             []string  // Addresses of requesting node
+	Incarnation       Seq       // Requesting node incarnation number for anti-entropy
+	Target            uint64    // ID of target node
+	TargetAddrs       []string  // Addresses of target node
+	TargetIncarnation Seq       // Target node incarnation number for anti-entropy
+	Time              time.Time // Local time at requesting node
 }
 
 // An indirect ping indirectly probes a node.
 type IndirectPingEvent struct {
 	PingEvent
-	Via     uint64    // ID of the node requesting the indirect probe
-	ViaTime time.Time // Local time at requesting node
+	Addrs          []string  // Addresses of the pinging node
+	Via            uint64    // ID of the node node requesting the ping
+	ViaAddrs       []string  // Addresses of node requesting the ping
+	ViaIncarnation Seq       // Requesting node incarnation number for anti-entropy
+	ViaTime        time.Time // Local time at node requesting the ping
 }
 
 // An indirect ping response returns the successful indirect ping for a
@@ -49,6 +52,14 @@ type IndirectAckEvent struct {
 	AckEvent
 	Via     uint64    // ID of the node requesting the indirect probe
 	ViaTime time.Time // Local time at requesting node
+}
+
+// An anti-entropy event updates a node to the most up-to-date incarnation
+// of the target node.
+type AntiEntropyEvent struct {
+	From uint64
+	Node
+	State State // Node membership state
 }
 
 const (

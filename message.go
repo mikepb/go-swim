@@ -1,14 +1,7 @@
 package swim
 
-// A message encapsulates pings, acknowledgements, and piggybacked broadcast
-// messages sent between nodes. The events types are listed individually to
-// simplify implementation. Codec implementations are assumed to omit empty
-// fields for efficiency.
-type Message struct {
-	From   uint64        // The node sending this message
-	To     uint64        // The node to which this message is intended
-	Events []interface{} // A ping for the recipient
-}
+// A message contains a set of events.
+type Message []interface{}
 
 // A coded message encapsulates a message for encoding and decoding.
 type CodedMessage struct {
@@ -18,6 +11,11 @@ type CodedMessage struct {
 }
 
 // Add an typed event to the message.
-func (m *Message) AddEvent(event interface{}) {
-	m.Events = append(m.Events, event)
+func (m *Message) AddEvent(events ...interface{}) {
+	*m = append(*m, events...)
+}
+
+// Get the events in a message.
+func (m Message) Events() []interface{} {
+	return []interface{}(m)
 }

@@ -10,7 +10,7 @@ import (
 type BucketList struct {
 	K         int    // Number of buckets to maintain
 	Sort      Sorter // Sorter implementation
-	LocalNode *InternalNode
+	LocalNode *Node
 
 	nodes      []*InternalNode // List of nodes
 	buckets    []*ShuffleList  // List of buckets

@@ -6,12 +6,16 @@ import (
 )
 
 func TestBucketList(t *testing.T) {
+	localNode := &Node{}
 	bl := &BucketList{K: 3,
-		Sort: func(nodes []*InternalNode, localNode *InternalNode) error {
+		Sort: func(nodes []*InternalNode, local *Node) error {
+			if local != localNode {
+				t.Fatalf("Expected local node %v got %v", localNode, local)
+			}
 			sort.Sort(byId(nodes))
 			return nil
 		},
-		LocalNode: &InternalNode{},
+		LocalNode: localNode,
 	}
 
 	count := 0

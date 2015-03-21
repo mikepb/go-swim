@@ -6,7 +6,7 @@ import (
 
 // Sorter sorts nodes relative to a local node according to a distance
 // metric.
-type Sorter func(nodes []*InternalNode, localNode *InternalNode) error
+type Sorter func(nodes []*InternalNode, localNode *Node) error
 
 type byId []*InternalNode
 
@@ -21,7 +21,7 @@ func (s byValue) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 func (s byValue) Less(i, j int) bool { return s[i].SortValue < s[j].SortValue }
 
 // Sort using the Chord finger.
-func FingerSorter(nodes []*InternalNode, localNode *InternalNode) error {
+func FingerSorter(nodes []*InternalNode, localNode *Node) error {
 	l := len(nodes)
 
 	// prepare sorted list
@@ -51,7 +51,7 @@ func FingerSorter(nodes []*InternalNode, localNode *InternalNode) error {
 }
 
 // Sort using the Kademlia XOR distance metric.
-func XorSorter(nodes []*InternalNode, localNode *InternalNode) (err error) {
+func XorSorter(nodes []*InternalNode, localNode *Node) (err error) {
 
 	// cache XOR calculation
 	for _, node := range nodes {
