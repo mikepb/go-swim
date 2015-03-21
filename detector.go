@@ -58,41 +58,9 @@ func (d *Detector) Start() {
 		panic("already started")
 	}
 
-	// start handling asynchronous messages
-	go func() {
-		var nodes []*InternalNode
-		var lastTick time.Time
-
-		ticker := time.NewTicker(d.ProbeInterval)
-		timer := time.NewTimer(0)
-		timer.Stop()
-
-		// run everything in a single goroutine event loop to avoid locks
-		// (except for channel locks)
-		for {
-			select {
-			case <-d.state: // stop signal
-				d.state <- false
-				return
-
-			case <-timer.C: // probe timeout
-				if !lastTick.IsZero() && nodes != nil {
-					d.indirectProbe(lastTick, nodes)
-				}
-
-			case t := <-ticker.C: // protocol period
-				if !lastTick.IsZero() && nodes != nil {
-					d.suspect(lastTick, nodes)
-				}
-				nodes = d.probe(t)
-				timer.Reset(d.ProbeTimeout)
-				lastTick = t
-
-			default: // read from network
-				d.recv()
-			}
-		}
-	}()
+	// run everything in a single goroutine event loop to avoid locks
+	// (except for channel locks)
+	go d.loop()
 }
 
 // Stop the failure detector.
@@ -120,6 +88,40 @@ func (d *Detector) Close() error {
 
 	// close the broker
 	return d.broker.Close()
+}
+
+// Run the failure detector loop.
+func (d *Detector) loop() {
+	var nodes []*InternalNode
+	var lastTick time.Time
+
+	ticker := time.NewTicker(d.ProbeInterval)
+	timer := time.NewTimer(0)
+	timer.Stop()
+
+	for {
+		select {
+		case <-d.state: // stop signal
+			d.state <- false
+			return
+
+		case <-timer.C: // probe timeout
+			if !lastTick.IsZero() && nodes != nil {
+				d.indirectProbe(lastTick, nodes)
+			}
+
+		case t := <-ticker.C: // protocol period
+			if !lastTick.IsZero() && nodes != nil {
+				d.suspect(lastTick, nodes)
+			}
+			nodes = d.probe(t)
+			timer.Reset(d.ProbeTimeout)
+			lastTick = t
+
+		default: // read from network
+			d.recv()
+		}
+	}
 }
 
 // Send fresh probes.
@@ -174,6 +176,13 @@ func (d *Detector) recv() {
 	// set deadline
 	t := time.Now().Add(time.Millisecond)
 	if err := d.broker.Transport.SetReadDeadline(t); err != nil {
+		d.Logger.Printf("[swim:detector:recv] %v", err)
+		return
+	}
+
+	// receive message from broker
+	msg, err := d.broker.Recv()
+	if err != nil {
 		switch err := err.(type) {
 		case net.Error:
 			if !err.Timeout() {
@@ -185,18 +194,10 @@ func (d *Detector) recv() {
 		return
 	}
 
-	// receive message from broker
-	msg, err := d.broker.Recv()
-	if err != nil {
-		d.Logger.Printf("[swim:detector:recv] %v", err)
-		return
-	}
-
-	// queue the events if addressed
+	// handle the events contained in the message
 	if msg.To == d.localNode.Id {
 		for _, event := range msg.Events {
 			d.handle(event)
-			d.inbox <- event
 		}
 	}
 }
@@ -211,7 +212,7 @@ func (d *Detector) handle(event interface{}) {
 	case *SuspectEvent:
 	case *DeathEvent:
 	case *UserEvent:
-		_ = event
+		d.inbox <- event
 	}
 }
 
