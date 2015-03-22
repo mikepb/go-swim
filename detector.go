@@ -12,10 +12,14 @@ const kBufferSize = 8
 // Detector implements the SWIM failure detector. Remember to close the
 // detector before discarding it to free resources.
 type Detector struct {
-	incarnation Seq
-	broker      Broker
 
-	// Node states in list form.
+	// The global incarnation number used for broadcasting node state updates.
+	incarnation Seq
+
+	// The Broker instance used for sending and receiving network messages.
+	broker *Broker
+
+	// Node states.
 	nodes       SelectionList
 	nodeMap     map[uint64]*InternalNode
 	actives     map[uint64]bool
@@ -222,7 +226,7 @@ func (d *Detector) BroadcastSync(event BroadcastEvent) {
 
 // Retrieve a list of member nodes that have not been marked as dead.
 func (d *Detector) Members() []Node {
-	nodes := make([]Node, 0, atomic.LoadInt64(&d.activeCount))
+	nodes := make([]Node, 0, d.ActiveCount())
 	d.nodeMapLock.RLock()
 	for _, node := range d.nodeMap {
 		if node.State != Dead {
@@ -284,14 +288,16 @@ func (d *Detector) loop() {
 
 // Send fresh probes.
 func (d *Detector) probe() (nodes []*InternalNode) {
-	max := d.nodes.Len()
+	max := d.ActiveCount()
 	if int(d.DirectProbes) < max {
 		max = int(d.DirectProbes)
 	}
 	for i := 0; i < max; i += 1 {
 		if node := d.nodes.Next(); node != nil {
-			d.sendTo(node, d.ping())
-			nodes = append(nodes, node)
+			if node.State == Alive || node.State == Suspect {
+				d.sendTo(node, d.ping())
+				nodes = append(nodes, node)
+			}
 		}
 	}
 	return
@@ -312,8 +318,13 @@ func (d *Detector) indirectProbe(periodStartTime time.Time, nodes []*InternalNod
 		}
 	}
 
+	// also don't ask suspect nodes for indirect probes
+	for id := range d.suspects {
+		flags[id] = true
+	}
+
 	// consider up to the configured value or the number of active nodes
-	max := int(atomic.LoadInt64(&d.activeCount)) - len(flags)
+	max := d.ActiveCount() - len(flags)
 	if int(d.IndirectProbes) < max {
 		max = int(d.IndirectProbes)
 	}
@@ -846,14 +857,14 @@ func (d *Detector) boundedTimeout(nodes []*InternalNode) time.Duration {
 func (d *Detector) suspicionTime() time.Duration {
 	// the suspicion time is calculated as mult*log(N+1); division by three is
 	// to convert from log base 2 to base 10 (approximately)
-	n := atomic.LoadInt64(&d.activeCount)
+	n := d.ActiveCount()
 	return (time.Duration(d.SuspicionMult) *
 		time.Duration(log2ceil(int(n)+1)) * d.ProbeInterval / 3)
 }
 
 func (d *Detector) retransmitLimit() uint {
 	// calculate the retransmission limit as mult*log(N+1); the division by three
-	n := atomic.LoadInt64(&d.activeCount)
+	n := d.ActiveCount()
 	i := uint(log2ceil(int(n)+1)) / 3
 	if i == 0 {
 		i = 1
