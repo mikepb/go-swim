@@ -62,19 +62,10 @@ type AntiEntropyEvent struct {
 	State State // Node membership state
 }
 
-const (
-	_ = iota
-	bcastAlive
-	bcastSuspect
-	bcastDeath
-	bcastUser
-)
-
 // Broadcast tags are used to efficiently invalidate existing broadcasts.
 type BroadcastTag struct {
-	From uint64
-	Id   uint64
-	Type int
+	Id    uint64
+	State State
 }
 
 // A broadcast event exposes the sequence and tag methods.
@@ -92,7 +83,7 @@ type AliveEvent struct {
 
 // Get the tag for the alive event.
 func (e *AliveEvent) Tag() BroadcastTag {
-	return BroadcastTag{e.Id, e.Id, bcastAlive}
+	return BroadcastTag{e.Id, Alive}
 }
 
 // Get the sequence for the alive event.
@@ -109,7 +100,7 @@ type SuspectEvent struct {
 
 // Get the tag for the suspect event.
 func (e *SuspectEvent) Tag() BroadcastTag {
-	return BroadcastTag{e.Id, e.Id, bcastSuspect}
+	return BroadcastTag{e.Id, Suspect}
 }
 
 // Get the sequence for the suspect event.
@@ -126,7 +117,7 @@ type DeathEvent struct {
 
 // Get the tag for the death event.
 func (e *DeathEvent) Tag() BroadcastTag {
-	return BroadcastTag{e.Id, e.Id, bcastDeath}
+	return BroadcastTag{e.Id, Dead}
 }
 
 // Get the sequence for the death event.
@@ -137,17 +128,17 @@ func (e *DeathEvent) Seq() *Seq {
 // A user event is an application-specific broadcast. The event is passed
 // directly to the client application.
 type UserEvent struct {
-	From     uint64      // ID of the node broadcasting this event
-	Sequence Seq         // Sequence number of the event
-	Data     interface{} // User-specific data associated with the node
+	From        uint64      // ID of the node broadcasting this event
+	Incarnation Seq         // Incarnation number of the event
+	Data        interface{} // User-specific data associated with the node
 }
 
 // Get the tag for the user event.
 func (e *UserEvent) Tag() BroadcastTag {
-	return BroadcastTag{e.From, uint64(e.Sequence), bcastUser}
+	return BroadcastTag{uint64(e.Incarnation), 0}
 }
 
 // Get the sequence for the user event.
 func (e *UserEvent) Seq() *Seq {
-	return &e.Sequence
+	return &e.Incarnation
 }

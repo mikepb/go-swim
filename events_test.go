@@ -15,16 +15,16 @@ func TestBroadcastEvent(t *testing.T) {
 		}
 	}
 
-	tag := BroadcastTag{From: 34, Id: 34, Type: bcastAlive}
+	tag := BroadcastTag{Id: 34, State: Alive}
 	isBroadcast(&AliveEvent{12, Node{Id: 34, Incarnation: 13}}, tag)
 
-	tag.Type = bcastSuspect
+	tag.State = Suspect
 	isBroadcast(&SuspectEvent{12, 34, 13}, tag)
 
-	tag.Type = bcastDeath
+	tag.State = Dead
 	isBroadcast(&DeathEvent{12, 34, 13}, tag)
 
 	tag.Id = 13
-	tag.Type = bcastUser
+	tag.State = 0
 	isBroadcast(&UserEvent{34, 13, nil}, tag)
 }
