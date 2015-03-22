@@ -214,9 +214,8 @@ func (d *Detector) Broadcast(event BroadcastEvent) {
 // transmission limit. If the detector is not running or there are no nodes
 // other than the local node, the call will block indefinitely.
 func (d *Detector) BroadcastSync(event BroadcastEvent) {
-	done := make(chan struct{})
 	d.sendLock.Lock()
-	d.broker.BroadcastSync(event, done)
+	done := d.broker.BroadcastSync(event)
 	d.sendLock.Unlock()
 	<-done
 }
@@ -715,18 +714,8 @@ func (d *Detector) sendTo(node *InternalNode, events ...interface{}) {
 	defer d.sendLock.Unlock()
 
 	// send the message with piggybacked broadcasts
+	d.broker.BroadcastLimit = d.retransmitLimit()
 	d.broker.SendTo(node.Addrs, msg)
-
-	// prune old broadcasts
-	d.pruneBroadcasts()
-}
-
-// Prune broadcasts that have been transmitted enough times.
-func (d *Detector) pruneBroadcasts() {
-	limit := d.retransmitLimit()
-	d.broker.Broadcasts.Prune(func(b *Broadcast) bool {
-		return b.Attempts >= limit
-	})
 }
 
 // Get the singleton node for the given ID.
@@ -865,5 +854,9 @@ func (d *Detector) suspicionTime() time.Duration {
 func (d *Detector) retransmitLimit() uint {
 	// calculate the retransmission limit as mult*log(N+1); the division by three
 	n := atomic.LoadInt64(&d.activeCount)
-	return d.RetransmitMult * uint(log2ceil(int(n)+1)) / 3
+	i := uint(log2ceil(int(n)+1)) / 3
+	if i == 0 {
+		i = 1
+	}
+	return d.RetransmitMult * i
 }

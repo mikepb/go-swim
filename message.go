@@ -5,9 +5,9 @@ type Message []interface{}
 
 // A coded message encapsulates a message for encoding and decoding.
 type CodedMessage struct {
-	Message *Message // The contained message, which may be nil
-	Bytes   []byte   // The byte-encoded message
-	Size    int      // The size of the message, if not byte-encoded
+	Message Message // The contained message, which may be nil
+	Bytes   []byte  // The byte-encoded message
+	Size    int     // The size of the message, if not byte-encoded
 }
 
 // Add an typed event to the message.

@@ -22,7 +22,7 @@ func (c *GobCodec) Decode(coded *CodedMessage) error {
 	}
 
 	// update values
-	coded.Message = msg
+	coded.Message = *msg
 
 	return nil
 }

@@ -98,6 +98,7 @@ func (q *BroadcastQueue) Prune(predicate func(b *Broadcast) bool) {
 	for i, b := range q.bcasts {
 		if predicate(b) {
 			q.bcasts[i] = nil
+			delete(q.sourceMap, b.Event.Tag())
 
 			// signal we're done
 			if b.Done != nil {

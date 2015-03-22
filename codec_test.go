@@ -10,7 +10,7 @@ func testCodec(t *testing.T, codec Codec) {
 	msg := new(Message)
 
 	test := func() {
-		encode := &CodedMessage{Message: msg}
+		encode := &CodedMessage{Message: *msg}
 		if err := codec.Encode(encode); err != nil {
 			t.Fatal(err)
 		}

@@ -212,6 +212,8 @@ func TestBroadcastQueue(t *testing.T) {
 		t.Fatalf("Expected pop of broadcast 1")
 	} else if l := bqueue.Len(); l != 0 {
 		t.Fatalf("Expected lenght of 0 got %v", l)
+	} else if _, ok := bqueue.sourceMap[bcast0.Event.Tag()]; ok {
+		t.Fatalf("Queue did not remove the broadcast from the map")
 	}
 
 	// go test will detect deadlock if we were not signalled
