@@ -234,6 +234,12 @@ func (d *Detector) Members() []Node {
 	return nodes
 }
 
+// Estimate the number of member nodes that have not been marked as dead,
+// excluding the local node.
+func (d *Detector) ActiveCount() int {
+	return int(atomic.LoadInt64(&d.activeCount))
+}
+
 // Run the failure detector loop.
 func (d *Detector) loop() {
 	var probedNodes []*InternalNode
