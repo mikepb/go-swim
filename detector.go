@@ -295,22 +295,29 @@ func (d *Detector) probe() (nodes []*InternalNode) {
 // Send indirect probes.
 func (d *Detector) indirectProbe(periodStartTime time.Time, nodes []*InternalNode) {
 
+	// so that we don't ask the probe targets to probe themselves
+	flags := make(map[uint64]bool)
+
 	// batch requests for the indirect probes
 	requests := []interface{}{}
 	for _, node := range nodes {
 		if node.LastAckTime.Before(periodStartTime) {
 			requests = append(requests, d.pingRequest(node))
+			flags[node.Id] = true
 		}
 	}
 
-	// send the indirect probe requests
-	max := d.nodes.Len()
+	// consider up to the configured value or the number of active nodes
+	max := int(atomic.LoadInt64(&d.activeCount)) - len(flags)
 	if int(d.IndirectProbes) < max {
 		max = int(d.IndirectProbes)
 	}
-	for i := 0; i < max; i += 1 {
-		if node := d.nodes.Next(); node != nil {
+
+	// send the indirect probe requests
+	for i := 0; i < max; {
+		if node := d.nodes.Next(); node != nil && !flags[node.Id] {
 			d.sendTo(node, requests...)
+			i += 1
 		}
 	}
 }
