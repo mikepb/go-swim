@@ -8,7 +8,7 @@ import (
 
 func TestMailbox(t *testing.T) {
 	mms := 512
-	codec := newTestCodec()
+	codec := newMockCodec()
 	transport := newTestTransport(mms)
 	broker := &Broker{Transport: transport, Codec: codec}
 
@@ -90,15 +90,15 @@ func TestMailbox(t *testing.T) {
 	t.Fatalf("TODO: test adding broadcasts sync")
 }
 
-type testCodec struct {
+type mockCodec struct {
 	decode     chan *CodedMessage
 	encode     chan *CodedMessage
 	decodeErrs chan error
 	encodeErrs chan error
 }
 
-func newTestCodec() *testCodec {
-	return &testCodec{
+func newMockCodec() *mockCodec {
+	return &mockCodec{
 		decode:     make(chan *CodedMessage, 1),
 		encode:     make(chan *CodedMessage, 1),
 		decodeErrs: make(chan error, 1),
@@ -106,7 +106,7 @@ func newTestCodec() *testCodec {
 	}
 }
 
-func (c *testCodec) Decode(message *CodedMessage) error {
+func (c *mockCodec) Decode(message *CodedMessage) error {
 	c.decode <- message
 	if len(c.decodeErrs) > 0 {
 		return <-c.decodeErrs
@@ -114,7 +114,7 @@ func (c *testCodec) Decode(message *CodedMessage) error {
 	return nil
 }
 
-func (c *testCodec) Encode(message *CodedMessage) error {
+func (c *mockCodec) Encode(message *CodedMessage) error {
 	c.encode <- message
 	if len(c.encodeErrs) > 0 {
 		return <-c.encodeErrs

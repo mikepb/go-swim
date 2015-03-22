@@ -395,35 +395,40 @@ func (d *Detector) recv() {
 
 func (d *Detector) handle(lastTick time.Time, event interface{}) {
 	switch event := event.(type) {
-	case *PingEvent:
-		d.handlePing(event)
+	case PingEvent:
+		d.handlePing(&event)
 
-	case *AckEvent:
-		d.handleAck(lastTick, event)
+	case AckEvent:
+		d.handleAck(lastTick, &event)
 
-	case *IndirectPingRequestEvent:
-		d.handleIndirectPingRequest(event)
+	case IndirectPingRequestEvent:
+		d.handleIndirectPingRequest(&event)
 
-	case *IndirectPingEvent:
-		d.handleIndirectPing(event)
+	case IndirectPingEvent:
+		d.handleIndirectPing(&event)
 
-	case *IndirectAckEvent:
-		d.handleIndirectAck(lastTick, event)
+	case IndirectAckEvent:
+		d.handleIndirectAck(lastTick, &event)
 
-	case *AntiEntropyEvent:
-		d.handleAntiEntropy(event)
+	case AntiEntropyEvent:
+		d.handleAntiEntropy(&event)
 
-	case *AliveEvent:
-		d.handleAlive(event)
+	case AliveEvent:
+		d.handleAlive(&event)
 
-	case *SuspectEvent:
-		d.handleSuspect(event)
+	case SuspectEvent:
+		d.handleSuspect(&event)
 
-	case *DeathEvent:
-		d.handleDeath(event)
+	case DeathEvent:
+		d.handleDeath(&event)
 
-	case *UserEvent:
-		d.handleUserEvent(event)
+	case UserEvent:
+		d.handleUserEvent(&event)
+
+	default:
+		if d.Logger != nil {
+			d.Logger.Printf("[swim:detector:handle] Unrecognized event %v", event)
+		}
 	}
 }
 
