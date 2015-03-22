@@ -779,6 +779,7 @@ func (d *Detector) stateUpdate(node *InternalNode, state State, bcast bool) {
 		// add to selection list
 		if !d.actives[node.Id] {
 			d.nodes.Add(node)
+			d.actives[node.Id] = true
 		}
 
 	case Suspect:
