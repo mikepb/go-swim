@@ -102,6 +102,12 @@ type Detector struct {
 
 	// If not nil, log receipt of messages.
 	Logger *log.Logger
+
+	// If not nil, channel on which to send nodes when they are updated.
+	UpdateCh chan Node
+
+	// If not nil, channel on which to send messages received by this node.
+	MessageCh chan Message
 }
 
 // Start the failure detector.
@@ -425,6 +431,11 @@ func (d *Detector) recv() {
 		// ignore unaddressed messages
 		if msg.To != d.localNode.Id {
 			return
+		}
+
+		// trigger message update
+		if d.MessageCh != nil {
+			d.MessageCh <- *msg
 		}
 
 		// anti-entropy
@@ -832,6 +843,11 @@ func (d *Detector) stateUpdate(node *InternalNode, state State, bcast bool) {
 
 	// update active count
 	atomic.StoreInt64(&d.activeCount, int64(len(d.actives)))
+
+	// notify update
+	if d.UpdateCh != nil {
+		defer func() { d.UpdateCh <- node.Node }()
+	}
 
 	// stop early if not broadcasting
 	if !bcast {
