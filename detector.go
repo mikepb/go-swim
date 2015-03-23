@@ -23,19 +23,21 @@ type Detector struct {
 	nodes       SelectionList
 	nodeMap     map[uint64]*InternalNode
 	actives     map[uint64]bool
+	activeList  []Node
 	activeCount int64
 	suspects    map[uint64]*InternalNode
 
 	// States for signaling the event loop.
-	state    int
-	started  bool
-	stopping chan bool
-	stopped  chan bool
-	events   chan interface{}
+	state              int
+	started            bool
+	stopping           chan bool
+	stopped            chan bool
+	events             chan interface{}
+	activeListRequest  chan struct{}
+	activeListResponse chan []Node
 
 	// Concurrency control.
-	sendLock    sync.Mutex
-	nodeMapLock sync.RWMutex
+	sendLock sync.Mutex
 
 	// Private instance of the local node used for synchronization.
 	localNode Node
@@ -126,6 +128,7 @@ func (d *Detector) Start() {
 		d.stopping = make(chan bool, 1)
 		d.stopped = make(chan bool, 1)
 		d.events = make(chan interface{}, kBufferSize)
+		d.activeListRequest = make(chan struct{}, 1)
 
 		// create maps
 		d.nodeMap = make(map[uint64]*InternalNode)
@@ -248,17 +251,11 @@ func (d *Detector) BroadcastSync(event BroadcastEvent) {
 	<-done
 }
 
-// Retrieve a list of member nodes that have not been marked as dead.
+// Retrieve a list of member nodes that have not been marked as dead. The
+// returned list should not be modified.
 func (d *Detector) Members() []Node {
-	nodes := make([]Node, 0, d.ActiveCount())
-	d.nodeMapLock.RLock()
-	for _, node := range d.nodeMap {
-		if node.State != Dead {
-			nodes = append(nodes, node.Node)
-		}
-	}
-	d.nodeMapLock.RUnlock()
-	return nodes
+	d.activeListRequest <- struct{}{}
+	return <-d.activeListResponse
 }
 
 // Estimate the number of member nodes that have not been marked as dead,
@@ -306,6 +303,9 @@ func (d *Detector) loop() {
 
 			// set the timer for maybe sending indirect probes
 			timer.Reset(d.boundedTimeout(probedNodes))
+
+		case <-d.activeListRequest: // requests for the active list
+			d.sendActiveList()
 		}
 	}
 }
@@ -768,7 +768,6 @@ func (d *Detector) sendTo(node *InternalNode, events ...interface{}) {
 func (d *Detector) lookup(id uint64, addrs []string) *InternalNode {
 
 	// lookup the node
-	d.nodeMapLock.RLock()
 	node, ok := d.nodeMap[id]
 
 	if !ok {
@@ -782,9 +781,7 @@ func (d *Detector) lookup(id uint64, addrs []string) *InternalNode {
 		}
 
 		// save node
-		d.nodeMapLock.Lock()
 		d.nodeMap[id] = node
-		d.nodeMapLock.Unlock()
 
 		// hint RTT
 		node.RTT.Hint(d.ProbeTimeout)
@@ -792,8 +789,6 @@ func (d *Detector) lookup(id uint64, addrs []string) *InternalNode {
 		// trigger state update
 		d.stateUpdate(node, 0, false)
 
-	} else {
-		d.nodeMapLock.RUnlock()
 	}
 
 	// return the singleton
@@ -824,6 +819,7 @@ func (d *Detector) stateUpdate(node *InternalNode, state State, bcast bool) {
 		if !d.actives[node.Id] {
 			d.nodes.Add(node)
 			d.actives[node.Id] = true
+			d.activeList = nil
 		}
 
 	case Suspect:
@@ -837,6 +833,7 @@ func (d *Detector) stateUpdate(node *InternalNode, state State, bcast bool) {
 		if d.actives[node.Id] {
 			d.nodes.Remove(node)
 			delete(d.actives, node.Id)
+			d.activeList = nil
 		}
 
 	}
@@ -865,6 +862,26 @@ func (d *Detector) stateUpdate(node *InternalNode, state State, bcast bool) {
 	case Dead:
 		d.Broadcast(d.death(node))
 	}
+}
+
+// Send the active list, caching when possible.
+func (d *Detector) sendActiveList() {
+
+	// send cached
+	if d.activeList != nil {
+		d.activeListResponse <- d.activeList
+		return
+	}
+
+	// make new list
+	nodes := make([]Node, 0, d.ActiveCount())
+	for id := range d.actives {
+		nodes = append(nodes, d.nodeMap[id].Node)
+	}
+	d.activeList = nodes
+
+	// send new list
+	d.activeListResponse <- nodes
 }
 
 func (d *Detector) boundedTimeout(nodes []*InternalNode) time.Duration {
