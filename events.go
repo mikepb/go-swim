@@ -59,7 +59,6 @@ type IndirectAckEvent struct {
 type AntiEntropyEvent struct {
 	From uint64
 	Node
-	State State // Node membership state
 }
 
 // Broadcast tags are used to efficiently invalidate existing broadcasts.

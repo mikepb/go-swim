@@ -8,6 +8,7 @@ import (
 type Node struct {
 	Id          uint64      // Big-endian 64-bit ID, e.g. IEEE EUI-64 format
 	Addrs       []string    // Addresses at which to reach the node
+	State       State       // Node membership state
 	Incarnation Seq         // Last known incarnation number
 	UserData    interface{} // User data
 }
@@ -29,6 +30,5 @@ type InternalNode struct {
 	LastSentTime time.Time // Last time a message was sent
 
 	Node
-	State     State  // Node membership state
 	SortValue uint64 // For the sorting implementations
 }

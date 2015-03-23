@@ -71,7 +71,7 @@ func testCodec(t *testing.T, codec Codec) {
 
 	// anti-entropy event
 	msg.AddEvent(AntiEntropyEvent{
-		From: 13, Node: Node{Id: 14, Incarnation: Seq(29)}, State: Alive,
+		From: 13, Node: Node{Id: 14, Incarnation: Seq(29), State: Alive},
 	})
 	test()
 

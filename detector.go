@@ -607,8 +607,6 @@ func (d *Detector) handleStateBroadcast(event BroadcastEvent, id uint64, incarna
 		// special case for alive
 		if state == Alive {
 			node.Node = event.(*AliveEvent).Node
-		} else {
-			node.State = state
 		}
 
 		// trigger state update for this new incarnation
@@ -717,9 +715,8 @@ func (d *Detector) death(node *InternalNode) *DeathEvent {
 // Send an anti-entropy event.
 func (d *Detector) antiEntropy(node *InternalNode) *AntiEntropyEvent {
 	return &AntiEntropyEvent{
-		From:  d.localNode.Id,
-		Node:  node.Node,
-		State: node.State,
+		From: d.localNode.Id,
+		Node: node.Node,
 	}
 }
 
