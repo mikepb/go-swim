@@ -129,6 +129,7 @@ func (d *Detector) Start() {
 		d.stopped = make(chan bool, 1)
 		d.events = make(chan interface{}, kBufferSize)
 		d.activeListRequest = make(chan struct{}, 1)
+		d.activeListResponse = make(chan []Node, 1)
 
 		// create maps
 		d.nodeMap = make(map[uint64]*InternalNode)
