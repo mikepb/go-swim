@@ -50,9 +50,8 @@ type IndirectAckEvent struct {
 }
 
 // An anti-entropy event updates a node to the most up-to-date incarnation
-// of the target node.
+// of the target node. The sender is always the node described in the event.
 type AntiEntropyEvent struct {
-	From uint64
 	Node
 }
 

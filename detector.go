@@ -717,7 +717,6 @@ func (d *Detector) death(node *InternalNode) *DeathEvent {
 // Send an anti-entropy event.
 func (d *Detector) antiEntropy() *AntiEntropyEvent {
 	return &AntiEntropyEvent{
-		From: d.localNode.Id,
 		Node: d.localNode,
 	}
 }
