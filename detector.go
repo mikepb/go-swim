@@ -88,6 +88,18 @@ type Detector struct {
 	// Nodes marked as suspicious after this timeout are marked as dead.
 	SuspicionMult uint
 
+	// The Transport implementation to use. The instance must not be accessed
+	// outside the detector.
+	Transport Transport
+
+	// The Codec implementation to use. The instance must not be accessed
+	// outside the detector.
+	Codec Codec
+
+	// The SelectionList implementation to use. The instance must not be
+	// accessed outside the detector.
+	SelectionList SelectionList
+
 	// If not nil, log receipt of messages.
 	Logger *log.Logger
 }
@@ -97,6 +109,12 @@ func (d *Detector) Start() {
 
 	// initialize
 	if d.stopping == nil {
+
+		// create broker
+		d.broker = NewBroker(d.Transport, d.Codec)
+
+		// save selection list
+		d.nodes = d.SelectionList
 
 		// create channels
 		d.stopping = make(chan bool, 1)

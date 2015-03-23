@@ -51,6 +51,7 @@ func (r *SimRouter) SendTo(addrs []string, message *CodedMessage) error {
 		for _, addr := range addrs {
 			if t, ok := r.Routes[addr]; ok {
 				t.RecvCh <- message
+				return
 			}
 		}
 	})
