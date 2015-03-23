@@ -42,11 +42,11 @@ func testCodec(t *testing.T, codec Codec) {
 	test()
 
 	// ping event
-	msg.AddEvent(PingEvent{From: 12, Incarnation: Seq(9), Time: time.Now()})
+	msg.AddEvent(PingEvent{From: 12, Time: time.Now()})
 	test()
 
 	// ack event
-	msg.AddEvent(AckEvent{From: 13, Incarnation: Seq(7), Time: time.Now()})
+	msg.AddEvent(AckEvent{From: 13, Time: time.Now()})
 	test()
 
 	// indirect ping request event
@@ -57,14 +57,14 @@ func testCodec(t *testing.T, codec Codec) {
 
 	// indirect ping event
 	msg.AddEvent(IndirectPingEvent{
-		PingEvent: PingEvent{From: 12, Incarnation: Seq(9), Time: time.Now()},
+		PingEvent: PingEvent{From: 12, Time: time.Now()},
 		Addrs:     []string{"12"}, Via: 13, ViaTime: time.Now(),
 	})
 	test()
 
 	// indirect ack event
 	msg.AddEvent(IndirectAckEvent{
-		AckEvent: AckEvent{From: 13, Incarnation: Seq(7), Time: time.Now()},
+		AckEvent: AckEvent{From: 13, Time: time.Now()},
 		Via:      13, ViaTime: time.Now(),
 	})
 	test()

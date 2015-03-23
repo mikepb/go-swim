@@ -1,7 +1,12 @@
 package swim
 
 // A message contains a set of events.
-type Message []interface{}
+type Message struct {
+	From        uint64 // Sender ID
+	To          uint64 // Recipient ID
+	Incarnation Seq    // Incarnation of recipient node for anti-entropy
+	EventList   []interface{}
+}
 
 // A coded message encapsulates a message for encoding and decoding.
 type CodedMessage struct {
@@ -54,11 +59,11 @@ func (m *Message) AddEvent(events ...interface{}) {
 		}
 
 		// append direct value
-		*m = append(*m, event)
+		m.EventList = append(m.EventList, event)
 	}
 }
 
 // Get the events in a message.
-func (m Message) Events() []interface{} {
-	return []interface{}(m)
+func (m *Message) Events() []interface{} {
+	return m.EventList
 }

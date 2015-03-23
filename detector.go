@@ -347,6 +347,14 @@ func (d *Detector) indirectProbe(periodStartTime time.Time, nodes []*InternalNod
 		max = int(d.IndirectProbes)
 	}
 
+	// if no indirect nodes, optimistically re-ping with anti-entropy
+	if max == 0 {
+		for _, node := range nodes {
+			d.sendTo(node, d.antiEntropy(), d.ping())
+		}
+		return
+	}
+
 	// send the indirect probe requests
 	for i := 0; i < max; {
 		if node := d.nodes.Next(); node != nil && !flags[node.Id] {
@@ -414,6 +422,15 @@ func (d *Detector) recv() {
 			d.Logger.Printf("[swim:detector:recv] %v", msg)
 		}
 
+		// ignore unaddressed messages
+		if msg.To != d.localNode.Id {
+			return
+		}
+
+		// anti-entropy
+		node := d.lookup(msg.From, nil)
+		node.RemoteIncarnation = msg.Incarnation
+
 		// queue events
 		for _, event := range msg.Events() {
 			d.events <- event
@@ -464,53 +481,44 @@ func (d *Detector) handle(lastTick time.Time, event interface{}) {
 func (d *Detector) handlePing(event *PingEvent) {
 
 	// lookup the node
-	node, events, ok := d.lookup(event.From, event.Incarnation, nil)
+	node := d.lookup(event.From, nil)
 
 	// can't acknowledge without return address
-	if !ok || node.Addrs == nil {
+	if len(node.Addrs) == 0 {
 		return
 	}
 
 	// acknowledge the ping
-	events = append(events, d.ack(event.Time))
-	d.sendTo(node, events...)
+	d.sendTo(node, d.ack(event.Time))
 }
 
 // Handle indirect ping requests.
 func (d *Detector) handleIndirectPingRequest(event *IndirectPingRequestEvent) {
 
 	// lookup the nodes
-	from, fromEvents, _ := d.lookup(event.From, event.Incarnation, event.Addrs)
-	target, targetEvents, _ := d.lookup(event.Target, event.TargetIncarnation, event.TargetAddrs)
+	from := d.lookup(event.From, event.Addrs)
+	target := d.lookup(event.Target, event.TargetAddrs)
 
 	// send indirect ping
-	fromEvents = append(fromEvents, d.pingVia(from, event.Time))
-	d.sendTo(target, targetEvents...)
-
-	// send anti-entropy response to requestor
-	if fromEvents != nil {
-		d.sendTo(target, fromEvents...)
-	}
+	d.sendTo(target, d.pingVia(from, event.Time))
 }
 
 // Handle indirect pings.
 func (d *Detector) handleIndirectPing(event *IndirectPingEvent) {
 
 	// lookup the nodes
-	node, nodeEvents, _ := d.lookup(event.From, event.Incarnation, event.Addrs)
-	via, viaEvents, _ := d.lookup(event.Via, event.ViaIncarnation, event.ViaAddrs)
+	node := d.lookup(event.From, event.Addrs)
+	via := d.lookup(event.Via, event.ViaAddrs)
 
 	// send indirect ack
-	events := append(nodeEvents, viaEvents...)
-	events = append(events, d.indirectAck(event.Time, via, event.ViaTime))
-	d.sendTo(node, events...)
+	d.sendTo(node, d.indirectAck(event.Time, via, event.ViaTime))
 }
 
 // Handle acknowledgements.
 func (d *Detector) handleAck(lastTick time.Time, event *AckEvent) {
 
 	// lookup the node
-	node, events, _ := d.lookup(event.From, event.Incarnation, nil)
+	node := d.lookup(event.From, nil)
 
 	// check the timestamp
 	if lastTick.IsZero() {
@@ -534,11 +542,6 @@ func (d *Detector) handleAck(lastTick time.Time, event *AckEvent) {
 	if node.State != Alive {
 		d.stateUpdate(node, Alive, true)
 	}
-
-	// send anti-entropy response
-	if events != nil {
-		d.sendTo(node, events...)
-	}
 }
 
 // Handle indirect acknowledgement.
@@ -548,22 +551,21 @@ func (d *Detector) handleIndirectAck(lastTick time.Time, event *IndirectAckEvent
 	d.handleAck(lastTick, &event.AckEvent)
 
 	// lookup the node
-	node, events, _ := d.lookup(event.Via, 0, nil)
+	node := d.lookup(event.Via, nil)
 
 	// update ack event for requesting node
 	ack := &event.AckEvent
 	ack.Time = event.ViaTime
 
 	// relay ack to requestor
-	events = append(events, ack)
-	d.sendTo(node, events...)
+	d.sendTo(node, ack)
 }
 
 // Handle anti-entropy event.
 func (d *Detector) handleAntiEntropy(event *AntiEntropyEvent) {
 
 	// lookup the node
-	node, _, _ := d.lookup(event.Id, 0, nil)
+	node := d.lookup(event.Id, nil)
 
 	// ignore old updates
 	if node.Incarnation.Compare(event.Incarnation) >= 0 {
@@ -596,7 +598,7 @@ func (d *Detector) handleDeath(event *DeathEvent) {
 func (d *Detector) handleStateBroadcast(event BroadcastEvent, id uint64, incarnation Seq, state State) {
 
 	// lookup the node
-	node, _, _ := d.lookup(id, 0, nil)
+	node := d.lookup(id, nil)
 
 	if cmp := node.Incarnation.Compare(incarnation); cmp < 0 {
 
@@ -616,6 +618,9 @@ func (d *Detector) handleStateBroadcast(event BroadcastEvent, id uint64, incarna
 		d.Broadcast(event)
 
 	} else if cmp > 0 {
+
+		// update incarnation number
+		node.Incarnation.Witness(d.incarnation.Increment())
 
 		// we have an update to broadcast
 		d.stateUpdate(node, state, true)
@@ -638,18 +643,16 @@ func (d *Detector) handleUserEvent(event *UserEvent) {
 // Ping the node.
 func (d *Detector) ping() *PingEvent {
 	return &PingEvent{
-		From:        d.localNode.Id,
-		Incarnation: d.localNode.Incarnation.Get(),
-		Time:        time.Now(),
+		From: d.localNode.Id,
+		Time: time.Now(),
 	}
 }
 
 // Acknowledge a ping.
 func (d *Detector) ack(t time.Time) *AckEvent {
 	return &AckEvent{
-		From:        d.localNode.Id,
-		Incarnation: d.localNode.Incarnation.Get(),
-		Time:        t,
+		From: d.localNode.Id,
+		Time: t,
 	}
 }
 
@@ -657,7 +660,6 @@ func (d *Detector) ack(t time.Time) *AckEvent {
 func (d *Detector) pingRequest(node *InternalNode) *IndirectPingRequestEvent {
 	return &IndirectPingRequestEvent{
 		From:        d.localNode.Id,
-		Incarnation: d.localNode.Incarnation.Get(),
 		Addrs:       d.localNode.Addrs,
 		Time:        time.Now(),
 		Target:      node.Id,
@@ -687,7 +689,7 @@ func (d *Detector) indirectAck(t time.Time, via *InternalNode, viaTime time.Time
 
 // Broadcast news that a node is alive.
 func (d *Detector) alive(node *InternalNode) *AliveEvent {
-	node.Incarnation.Increment()
+	node.Incarnation.Witness(d.incarnation.Increment())
 	return &AliveEvent{
 		From: d.localNode.Id,
 		Node: node.Node,
@@ -713,10 +715,10 @@ func (d *Detector) death(node *InternalNode) *DeathEvent {
 }
 
 // Send an anti-entropy event.
-func (d *Detector) antiEntropy(node *InternalNode) *AntiEntropyEvent {
+func (d *Detector) antiEntropy() *AntiEntropyEvent {
 	return &AntiEntropyEvent{
 		From: d.localNode.Id,
-		Node: node.Node,
+		Node: d.localNode,
 	}
 }
 
@@ -733,6 +735,14 @@ func (d *Detector) sendTo(node *InternalNode, events ...interface{}) {
 
 	// create the message
 	msg := new(Message)
+
+	// add anti-entropy first, if needed, to be processed first at remote node
+	if i := d.localNode.Incarnation.Get(); node.RemoteIncarnation.Compare(i) < 0 {
+		msg.AddEvent(d.antiEntropy())
+		node.RemoteIncarnation.Witness(i)
+	}
+
+	// add the event
 	msg.AddEvent(events...)
 
 	// lock for sending
@@ -745,7 +755,7 @@ func (d *Detector) sendTo(node *InternalNode, events ...interface{}) {
 }
 
 // Get the singleton node for the given ID.
-func (d *Detector) lookup(id uint64, incarnation Seq, addrs []string) (*InternalNode, []interface{}, bool) {
+func (d *Detector) lookup(id uint64, addrs []string) *InternalNode {
 
 	// lookup the node
 	d.nodeMapLock.RLock()
@@ -776,17 +786,8 @@ func (d *Detector) lookup(id uint64, incarnation Seq, addrs []string) (*Internal
 		d.nodeMapLock.RUnlock()
 	}
 
-	// witness the global incarnation number
-	d.incarnation.Witness(incarnation)
-
-	// anti-entropy
-	events := []interface{}{}
-	if node.Incarnation.Compare(incarnation) > 0 {
-		events = append(events, d.antiEntropy(node))
-	}
-
 	// return the singleton
-	return node, events, !ok
+	return node
 }
 
 // Increment the local node incarnation number.
