@@ -745,6 +745,9 @@ func (d *Detector) sendTo(node *InternalNode, events ...interface{}) {
 
 	// create the message
 	msg := new(Message)
+	msg.From = d.localNode.Id
+	msg.To = node.Id
+	msg.Incarnation = node.Incarnation
 
 	// add anti-entropy first, if needed, to be processed first at remote node
 	if i := d.localNode.Incarnation.Get(); node.RemoteIncarnation.Compare(i) < 0 {
