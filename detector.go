@@ -429,23 +429,20 @@ func (d *Detector) recv() {
 			d.Logger.Printf("[swim:detector:recv] %v", msg)
 		}
 
-		// ignore unaddressed messages
-		if msg.To != d.localNode.Id {
-			return
+		// anti-entropy
+		if msg.To == d.localNode.Id {
+			node := d.lookup(msg.From, nil)
+			node.RemoteIncarnation = msg.Incarnation
+		}
+
+		// queue events
+		for _, event := range msg.Events() {
+			d.events <- event
 		}
 
 		// trigger message update
 		if d.MessageCh != nil {
 			d.MessageCh <- *msg
-		}
-
-		// anti-entropy
-		node := d.lookup(msg.From, nil)
-		node.RemoteIncarnation = msg.Incarnation
-
-		// queue events
-		for _, event := range msg.Events() {
-			d.events <- event
 		}
 	}
 }
