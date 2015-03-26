@@ -31,6 +31,10 @@ func TestSeq(t *testing.T) {
 		t.Fatalf("expected Witness to return 420")
 	}
 
+	if s.Witness(420+Seq(halfSeq)) != 420 || s.Get() != 420 {
+		t.Fatalf("expected Witness to return 420 got %v", s.Get())
+	}
+
 	if c := s.Compare(Seq(0)); c != 1 {
 		t.Fatalf("expected Compare to return 1 got %v", c)
 	}
@@ -43,11 +47,11 @@ func TestSeq(t *testing.T) {
 		t.Fatalf("expected Compare to return -1 got %v", c)
 	}
 
-	if c := s.Compare(Seq(halfSeq + 420)); c != -1 {
+	if c := s.Compare(Seq(halfSeq + 419)); c != -1 {
 		t.Fatalf("expected Compare to return 1 got %v", c)
 	}
 
-	if c := s.Compare(Seq(halfSeq + 421)); c != 1 {
+	if c := s.Compare(Seq(halfSeq + 420)); c != 1 {
 		t.Fatalf("expected Compare to return 1 got %v", c)
 	}
 }

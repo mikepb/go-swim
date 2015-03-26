@@ -52,7 +52,7 @@ func (s *Seq) Compare(v Seq) int {
 
 func (s *Seq) compare(this, that uint32) int {
 	if this < that {
-		if that-this > halfSeq {
+		if that-this >= halfSeq {
 			// [this ... ... ... that]
 			return 1
 		} else {
@@ -60,7 +60,7 @@ func (s *Seq) compare(this, that uint32) int {
 			return -1
 		}
 	} else if this > that {
-		if this-that > halfSeq {
+		if this-that >= halfSeq {
 			// [that ... ... ... this]
 			return -1
 		} else {
