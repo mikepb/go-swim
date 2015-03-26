@@ -3,6 +3,12 @@
 The `go-swim` package implements a the [SWIM failure detector][swim] with a focus on rapid protocol prototyping. Specifically, the basic SWIM failure detection algorithm, described in a later section, is decomposed into the node selector component and the ping mechanism to allow us to replace the former with topologically-defined variants. The design of `go-swim` is inspired by and borrows heavily from HashiCorp's [memberlist][] implementation of SWIM.
 
 
+## Special thanks to our sponsors
+
+![HashiCorp](docs/hashicorp_logo.png)
+
+This project is generously sponsored by [HashiCorp][hashicorp]. We especially thank Mitchell Hashimoto and Armon Dadgar for their valuable feedback on developing the research goals for `go-swim`.
+
 ## Usage
 
 TBD
@@ -55,22 +61,36 @@ Instead of implementing non-piggybacked gossip outside of the SWIM messages, `go
 
 ## License
 
-Copyright 2015 Michael Phan-Ba &lt;michael@mikepb.com&gt;
+`go-swim` is dual-licensed under the Apache 2.0 and Mozilla Public License 2.0 licenses. You use the software under either license, but must comply with the terms of the license you choose. You should have received the text of the licenses as part of the source distribution of the software.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
 
-http://www.apache.org/licenses/LICENSE-2.0
+### Mozilla Public License 2.0
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+> This Source Code Form is subject to the terms of the Mozilla Public
+> License, v. 2.0. If a copy of the MPL was not distributed with this
+> file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+
+### Apache 2.0
+
+> Copyright 2015 Michael Phan-Ba &lt;michael@mikepb.com&gt;
+>
+> Licensed under the Apache License, Version 2.0 (the "License");
+> you may not use this file except in compliance with the License.
+> You may obtain a copy of the License at
+>
+> http://www.apache.org/licenses/LICENSE-2.0
+>
+> Unless required by applicable law or agreed to in writing, software
+> distributed under the License is distributed on an "AS IS" BASIS,
+> WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+> See the License for the specific language governing permissions and
+> limitations under the License.
 
 
 [architecture]: docs/architecture.md
+[hashicorp]: https://www.hashicorp.com
+[hashios]: https://github.com/hashicorp
 [memberlist]: https://github.com/hashicorp/memberlist
 [simulator]: docs/simulator.md
 [swim]: http://www.cs.cornell.edu/~asdas/research/dsn02-SWIM.pdf
