@@ -30,25 +30,23 @@ type Detector struct {
 	// States for signaling the event loop.
 	state              int
 	started            bool
-	stopping           chan bool
-	stopped            chan bool
-	events             chan interface{}
+	stopping           chan struct{}
+	stopped            chan struct{}
+	messages           chan *Message
 	activeListRequest  chan struct{}
 	activeListResponse chan []Node
+	joins              chan []string
 
 	// Concurrency control.
 	sendLock sync.Mutex
-
-	// Private instance of the local node used for synchronization.
-	localNode Node
 
 	// The local node identifies this instance of the failure detector. The
 	// node ID must be unique for all nodes. In addition, the node addresses
 	// must be sufficiently distinct to allow messages to be routed to the
 	// appropriate node ID. A transport may accept messages for multiple nodes
-	// so long as it routes those messages appropriately. Changes to the local
-	// node will not be picked up until the failure detector is restarted.
-	LocalNode *Node
+	// so long as it routes those messages appropriately. The local node must
+	// not be accessed when the Detector is running.
+	LocalNode Node
 
 	// The number of direct probes to send per protocol period. The algorithm
 	// described in the SWIM paper uses one direct probe per protocol period.
@@ -125,11 +123,12 @@ func (d *Detector) Start() {
 		d.nodes = d.SelectionList
 
 		// create channels
-		d.stopping = make(chan bool, 1)
-		d.stopped = make(chan bool, 1)
-		d.events = make(chan interface{}, kBufferSize)
+		d.stopping = make(chan struct{}, 1)
+		d.stopped = make(chan struct{}, 1)
+		d.messages = make(chan *Message, kBufferSize)
 		d.activeListRequest = make(chan struct{}, 1)
 		d.activeListResponse = make(chan []Node, 1)
+		d.joins = make(chan []string, 1)
 
 		// create maps
 		d.nodeMap = make(map[uint64]*InternalNode)
@@ -146,8 +145,8 @@ func (d *Detector) Start() {
 	d.state += 1
 	d.started = true
 
-	// update the private local node
-	d.localNode = *d.LocalNode
+	// update local node state
+	d.LocalNode.State = Alive
 	d.LocalNode.Incarnation.Witness(d.incarnation.Increment())
 
 	// receive messages asynchronously
@@ -167,7 +166,8 @@ func (d *Detector) Stop() {
 	}
 
 	// signal goroutine to stop
-	d.stopping <- true
+	d.state += 1
+	d.stopping <- struct{}{}
 
 	// receive acknowledgement
 	<-d.stopped
@@ -190,28 +190,25 @@ func (d *Detector) Close() error {
 
 // Join the failure detection group by sending a join intent to the nodes
 // represented by the given addresses.
-func (d *Detector) Join(addrs ...[]string) {
+func (d *Detector) Join(addrs ...string) {
 
 	if !d.started {
 		panic("not started")
 	}
 
-	// create alive event
-	event := &AliveEvent{
-		From: d.localNode.Id,
-		Node: d.localNode,
-	}
+	// request to send join events
+	d.joins <- addrs
+}
 
-	// increment incarnation number
-	event.Node.Incarnation = d.reincarnation()
+func (d *Detector) sendJoinIntent(addrs []string) {
 
 	// create the message
 	msg := new(Message)
-	msg.AddEvent(event)
+	msg.AddEvent(d.aliveNode(&d.LocalNode))
 
 	// send the event directly to the given addresses
 	for _, addy := range addrs {
-		d.broker.DirectTo(addy, msg)
+		d.broker.DirectTo([]string{addy}, msg)
 	}
 }
 
@@ -222,15 +219,8 @@ func (d *Detector) Leave() {
 		panic("not started")
 	}
 
-	// create death event
-	event := &DeathEvent{
-		From:        d.localNode.Id,
-		Id:          d.localNode.Id,
-		Incarnation: d.reincarnation(),
-	}
-
-	// broadcast it
-	d.BroadcastSync(event)
+	// broadcast death event
+	d.BroadcastSync(d.deathNode(&d.LocalNode))
 }
 
 // Broadcast an event asynchronously. If the detector is not running, the
@@ -280,11 +270,14 @@ func (d *Detector) loop() {
 	for {
 		select {
 		case <-d.stopping: // stop signal
-			d.stopped <- false
+			d.stopped <- struct{}{}
 			return
 
-		case event := <-d.events: // handle events
-			d.handle(periodStartTime, event)
+		case addrs := <-d.joins: // handle joins
+			d.sendJoinIntent(addrs)
+
+		case msg := <-d.messages: // handle messages
+			d.handle(periodStartTime, msg)
 
 		case <-timer.C: // probe timeout
 			if !periodStartTime.IsZero() && probedNodes != nil {
@@ -313,10 +306,19 @@ func (d *Detector) loop() {
 
 // Send fresh probes.
 func (d *Detector) probe() (nodes []*InternalNode) {
+
+	// useful for testing
+	if d.DirectProbes == 0 {
+		return nil
+	}
+
+	// maximum number of probes
 	max := d.ActiveCount()
 	if int(d.DirectProbes) < max {
 		max = int(d.DirectProbes)
 	}
+
+	// send the probes
 	for i := 0; i < max; i += 1 {
 		if node := d.nodes.Next(); node != nil {
 			if node.State == Alive || node.State == Suspect {
@@ -325,6 +327,7 @@ func (d *Detector) probe() (nodes []*InternalNode) {
 			}
 		}
 	}
+
 	return
 }
 
@@ -341,6 +344,11 @@ func (d *Detector) indirectProbe(periodStartTime time.Time, nodes []*InternalNod
 			requests = append(requests, d.pingRequest(node))
 			flags[node.Id] = true
 		}
+	}
+
+	// nothing to send
+	if len(requests) == 0 {
+		return
 	}
 
 	// also don't ask suspect nodes for indirect probes
@@ -409,36 +417,49 @@ func (d *Detector) recv() {
 		msg, err := d.broker.Recv()
 		if err != nil {
 			if d.Logger != nil {
-				d.Logger.Printf("[swim:detector:recv] %v", err)
+				d.Logger.Printf("[recv %v] %v", d.LocalNode.Id, err)
 			}
 			continue
 		}
 
 		// log the message
 		if d.Logger != nil {
-			d.Logger.Flags()
-			d.Logger.Printf("[swim:detector:recv] %v", msg)
+			d.Logger.Printf("[recv %v] %v", d.LocalNode.Id, msg)
 		}
 
-		// anti-entropy
-		if msg.To == d.localNode.Id {
-			node := d.lookup(msg.From, nil)
-			node.RemoteIncarnation = msg.Incarnation
-		}
-
-		// queue events
-		for _, event := range msg.Events() {
-			d.events <- event
-		}
-
-		// trigger message update
-		if d.MessageCh != nil {
-			d.MessageCh <- *msg
-		}
+		// queue messages
+		d.messages <- msg
 	}
 }
 
-func (d *Detector) handle(lastTick time.Time, event interface{}) {
+func (d *Detector) handle(lastTick time.Time, msg *Message) {
+
+	// witness global incarnation number
+	d.incarnation.Witness(msg.Incarnation)
+
+	// anti-entropy
+	if msg.To == d.LocalNode.Id {
+		node := d.lookup(msg.From, nil)
+		node.RemoteIncarnation = msg.Incarnation
+
+		// maybe dispute local state
+		if d.LocalNode.Incarnation.Compare(msg.Incarnation) < 0 {
+			d.Broadcast(d.aliveNode(&d.LocalNode))
+		}
+	}
+
+	// queue events
+	for _, event := range msg.Events() {
+		d.handleEvent(lastTick, event)
+	}
+
+	// trigger message update
+	if d.MessageCh != nil {
+		d.MessageCh <- *msg
+	}
+}
+
+func (d *Detector) handleEvent(lastTick time.Time, event interface{}) {
 	switch event := event.(type) {
 	case PingEvent:
 		d.handlePing(&event)
@@ -472,7 +493,7 @@ func (d *Detector) handle(lastTick time.Time, event interface{}) {
 
 	default:
 		if d.Logger != nil {
-			d.Logger.Printf("[swim:detector:handle] Unrecognized event %v", event)
+			d.Logger.Printf("[handle] Unrecognized event %v", event)
 		}
 	}
 }
@@ -490,6 +511,11 @@ func (d *Detector) handlePing(event *PingEvent) {
 
 	// acknowledge the ping
 	d.sendTo(node, d.ack(event.Time))
+
+	// if the node is not alive, the state is suspect
+	if node.State == Alive && node.State != Suspect {
+		d.stateUpdate(node, Suspect, false)
+	}
 }
 
 // Handle indirect ping requests.
@@ -540,6 +566,7 @@ func (d *Detector) handleAck(lastTick time.Time, event *AckEvent) {
 
 	// send alive message if node isn't marked as alive
 	if node.State != Alive {
+		d.Logger.Printf("ACK %v %v", d.LocalNode.Id, node.Node)
 		d.stateUpdate(node, Alive, true)
 	}
 }
@@ -566,6 +593,9 @@ func (d *Detector) handleAntiEntropy(event *AntiEntropyEvent) {
 
 	// lookup the node
 	node := d.lookup(event.Id, nil)
+
+	// witness global incarnation number
+	d.incarnation.Witness(event.Incarnation)
 
 	// ignore old updates
 	if node.Incarnation.Compare(event.Incarnation) >= 0 {
@@ -597,13 +627,23 @@ func (d *Detector) handleDeath(event *DeathEvent) {
 // Handle the alive, suspect, and death state broadcasts.
 func (d *Detector) handleStateBroadcast(event BroadcastEvent, id uint64, incarnation Seq, state State) {
 
+	// witness global incarnation number
+	d.incarnation.Witness(incarnation)
+
+	// if self
+	if id == d.LocalNode.Id {
+		if d.LocalNode.Incarnation.Compare(incarnation) < 0 {
+			d.Broadcast(d.aliveNode(&d.LocalNode))
+		}
+		return
+	}
+
 	// lookup the node
 	node := d.lookup(id, nil)
 
 	if cmp := node.Incarnation.Compare(incarnation); cmp < 0 {
 
 		// update incarnation numbers
-		d.incarnation.Witness(incarnation)
 		node.Incarnation.Witness(incarnation)
 
 		// special case for alive
@@ -643,7 +683,7 @@ func (d *Detector) handleUserEvent(event *UserEvent) {
 // Ping the node.
 func (d *Detector) ping() *PingEvent {
 	return &PingEvent{
-		From: d.localNode.Id,
+		From: d.LocalNode.Id,
 		Time: time.Now(),
 	}
 }
@@ -651,7 +691,7 @@ func (d *Detector) ping() *PingEvent {
 // Acknowledge a ping.
 func (d *Detector) ack(t time.Time) *AckEvent {
 	return &AckEvent{
-		From: d.localNode.Id,
+		From: d.LocalNode.Id,
 		Time: t,
 	}
 }
@@ -659,8 +699,8 @@ func (d *Detector) ack(t time.Time) *AckEvent {
 // Send an indirect ping request.
 func (d *Detector) pingRequest(node *InternalNode) *IndirectPingRequestEvent {
 	return &IndirectPingRequestEvent{
-		From:        d.localNode.Id,
-		Addrs:       d.localNode.Addrs,
+		From:        d.LocalNode.Id,
+		Addrs:       d.LocalNode.Addrs,
 		Time:        time.Now(),
 		Target:      node.Id,
 		TargetAddrs: node.Addrs,
@@ -671,7 +711,7 @@ func (d *Detector) pingRequest(node *InternalNode) *IndirectPingRequestEvent {
 func (d *Detector) pingVia(via *InternalNode, viaTime time.Time) *IndirectPingEvent {
 	return &IndirectPingEvent{
 		PingEvent: *d.ping(),
-		Addrs:     d.localNode.Addrs,
+		Addrs:     d.LocalNode.Addrs,
 		Via:       via.Id,
 		ViaAddrs:  via.Addrs,
 		ViaTime:   viaTime,
@@ -689,17 +729,22 @@ func (d *Detector) indirectAck(t time.Time, via *InternalNode, viaTime time.Time
 
 // Broadcast news that a node is alive.
 func (d *Detector) alive(node *InternalNode) *AliveEvent {
+	return d.aliveNode(&node.Node)
+}
+
+// Broadcast news that a node is alive.
+func (d *Detector) aliveNode(node *Node) *AliveEvent {
 	node.Incarnation.Witness(d.incarnation.Increment())
 	return &AliveEvent{
-		From: d.localNode.Id,
-		Node: node.Node,
+		From: d.LocalNode.Id,
+		Node: *node,
 	}
 }
 
 // Broadcast news that a node is suspected of failure.
 func (d *Detector) suspect(node *InternalNode) *SuspectEvent {
 	return &SuspectEvent{
-		From:        d.localNode.Id,
+		From:        d.LocalNode.Id,
 		Id:          node.Id,
 		Incarnation: d.incarnation.Increment(),
 	}
@@ -707,8 +752,13 @@ func (d *Detector) suspect(node *InternalNode) *SuspectEvent {
 
 // Broadcast news that a node has died.
 func (d *Detector) death(node *InternalNode) *DeathEvent {
+	return d.deathNode(&node.Node)
+}
+
+// Broadcast news that a node has died.
+func (d *Detector) deathNode(node *Node) *DeathEvent {
 	return &DeathEvent{
-		From:        d.localNode.Id,
+		From:        d.LocalNode.Id,
 		Id:          node.Id,
 		Incarnation: d.incarnation.Increment(),
 	}
@@ -717,7 +767,7 @@ func (d *Detector) death(node *InternalNode) *DeathEvent {
 // Send an anti-entropy event.
 func (d *Detector) antiEntropy() *AntiEntropyEvent {
 	return &AntiEntropyEvent{
-		Node: d.localNode,
+		Node: d.LocalNode,
 	}
 }
 
@@ -727,21 +777,19 @@ func (d *Detector) sendTo(node *InternalNode, events ...interface{}) {
 	// can't send if there are no addresses
 	if node.Addrs == nil {
 		if d.Logger != nil {
-			d.Logger.Printf("[swim:detector:sendTo] Can't send to node %v with no addresses!", node.Id)
+			d.Logger.Printf("[send] Can't send to node %v with no addresses!", node.Id)
 		}
 		return
 	}
 
 	// create the message
 	msg := new(Message)
-	msg.From = d.localNode.Id
+	msg.From = d.LocalNode.Id
 	msg.To = node.Id
 	msg.Incarnation = node.Incarnation
 
 	// add anti-entropy first, if needed, to be processed first at remote node
-	if node.LastAckTime.IsZero() {
-		msg.AddEvent(d.antiEntropy())
-	} else if i := d.localNode.Incarnation.Get(); node.RemoteIncarnation.Compare(i) < 0 {
+	if i := d.LocalNode.Incarnation.Get(); node.RemoteIncarnation.Compare(i) < 0 {
 		msg.AddEvent(d.antiEntropy())
 		node.RemoteIncarnation.Witness(i)
 	}
@@ -756,6 +804,10 @@ func (d *Detector) sendTo(node *InternalNode, events ...interface{}) {
 	// send the message with piggybacked broadcasts
 	d.broker.BroadcastLimit = d.retransmitLimit()
 	d.broker.SendTo(node.Addrs, msg)
+
+	if d.Logger != nil {
+		d.Logger.Printf("[send %v] %v", d.LocalNode.Id, msg)
+	}
 }
 
 // Get the singleton node for the given ID.
@@ -779,24 +831,10 @@ func (d *Detector) lookup(id uint64, addrs []string) *InternalNode {
 
 		// hint RTT
 		node.RTT.Hint(d.ProbeTimeout)
-
-		// trigger state update
-		d.stateUpdate(node, 0, false)
-
 	}
 
 	// return the singleton
 	return node
-}
-
-// Increment the local node incarnation number.
-func (d *Detector) reincarnation() Seq {
-	d.incarnation.Witness(d.localNode.Incarnation.Get())
-	d.incarnation.Witness(d.LocalNode.Incarnation.Get())
-	incarnation := d.incarnation.Increment()
-	d.localNode.Incarnation.Witness(incarnation)
-	d.LocalNode.Incarnation.Witness(incarnation)
-	return incarnation
 }
 
 // Consolidate node state updates.
@@ -807,6 +845,13 @@ func (d *Detector) stateUpdate(node *InternalNode, state State, bcast bool) {
 
 	// special handling
 	switch state {
+
+	case Suspect:
+
+		// save into global suspect list
+		d.suspects[node.Id] = node
+		fallthrough
+
 	case Alive:
 
 		// add to selection list
@@ -816,11 +861,6 @@ func (d *Detector) stateUpdate(node *InternalNode, state State, bcast bool) {
 			d.activeList = nil
 		}
 
-	case Suspect:
-
-		// save into global suspect list
-		d.suspects[node.Id] = node
-
 	case Dead:
 
 		// remove from selection list
@@ -829,6 +869,9 @@ func (d *Detector) stateUpdate(node *InternalNode, state State, bcast bool) {
 			delete(d.actives, node.Id)
 			d.activeList = nil
 		}
+
+	default: // unknown state
+		return
 
 	}
 

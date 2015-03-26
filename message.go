@@ -1,11 +1,22 @@
 package swim
 
+import (
+	"fmt"
+)
+
 // A message contains a set of events.
 type Message struct {
 	From        uint64 // Sender ID
 	To          uint64 // Recipient ID
 	Incarnation Seq    // Incarnation of recipient node for anti-entropy
 	EventList   []interface{}
+}
+
+// Default format output.
+func (m Message) String() string {
+	return fmt.Sprintf(
+		"Message{ From: %v, To: %v, Incarnation: %v, %v }",
+		m.From, m.To, m.Incarnation, m.EventList)
 }
 
 // A coded message encapsulates a message for encoding and decoding.

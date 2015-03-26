@@ -47,7 +47,7 @@ func (r *SimRouter) SendTo(addrs []string, message *CodedMessage) error {
 
 	// delay the packet to simulate a "real" network
 	time.AfterFunc(r.Delay(), func() {
-		defer recover()
+		defer func() { recover() }()
 		for _, addr := range addrs {
 			if t, ok := r.Routes[addr]; ok {
 				t.RecvCh <- message

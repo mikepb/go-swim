@@ -1,5 +1,9 @@
 package swim
 
+import (
+	"errors"
+)
+
 const kRecvChSize = 8
 
 // SimTransport implements a Transport suitable for use with the simulator.
@@ -36,12 +40,18 @@ func (t *SimTransport) Recv() (*CodedMessage, error) {
 	if t.Closed {
 		panic("closed")
 	}
-	coded := <-t.RecvCh
-	return coded, nil
+	if coded, ok := <-t.RecvCh; !ok {
+		return nil, errors.New("closed")
+	} else {
+		return coded, nil
+	}
 }
 
 // Close the simulated transport.
 func (t *SimTransport) Close() error {
+	if t.Closed {
+		panic("closed")
+	}
 	t.Closed = true
 	close(t.RecvCh)
 	return nil

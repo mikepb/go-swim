@@ -29,7 +29,7 @@ func (s *Seq) Witness(v Seq) Seq {
 		this := atomic.LoadUint32((*uint32)(s))
 
 		// update this sequence only if less than the new sequence
-		if that < this {
+		if s.compare(that, this) < 0 {
 			return Seq(this)
 		}
 
@@ -47,7 +47,10 @@ func (s *Seq) Witness(v Seq) Seq {
 func (s *Seq) Compare(v Seq) int {
 	this := atomic.LoadUint32((*uint32)(s))
 	that := uint32(v)
+	return s.compare(this, that)
+}
 
+func (s *Seq) compare(this, that uint32) int {
 	if this < that {
 		if that-this > halfSeq {
 			// [this ... ... ... that]

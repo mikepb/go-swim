@@ -88,8 +88,11 @@ func (b *Broker) encodeWithBroadcasts(coded *CodedMessage) error {
 
 		// add the events
 		for _, bcast := range bcasts[:max] {
-			coded.Message.AddEvent(bcast.Event)
-			bcast.Attempts += 1
+			// don't send broadcast to source
+			if coded.Message.To != bcast.Event.Source() {
+				coded.Message.AddEvent(bcast.Event)
+				bcast.Attempts += 1
+			}
 		}
 
 		// prune the queue and re-sort
