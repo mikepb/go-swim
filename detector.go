@@ -337,7 +337,7 @@ func (d *Detector) indirectProbe(periodStartTime time.Time, nodes []*InternalNod
 	// batch requests for the indirect probes
 	requests := []interface{}{}
 	for _, node := range nodes {
-		if node.LastAckTime.Before(periodStartTime) {
+		if node.LastAckTime.IsZero() || node.LastAckTime.Before(periodStartTime) {
 			requests = append(requests, d.pingRequest(node))
 			flags[node.Id] = true
 		}
@@ -354,14 +354,6 @@ func (d *Detector) indirectProbe(periodStartTime time.Time, nodes []*InternalNod
 		max = int(d.IndirectProbes)
 	}
 
-	// if no indirect nodes, optimistically re-ping with anti-entropy
-	if max == 0 {
-		for _, node := range nodes {
-			d.sendTo(node, d.antiEntropy(), d.ping())
-		}
-		return
-	}
-
 	// send the indirect probe requests
 	for i := 0; i < max; {
 		if node := d.nodes.Next(); node != nil && !flags[node.Id] {
@@ -376,7 +368,7 @@ func (d *Detector) suspected(periodStartTime time.Time, nodes []*InternalNode) {
 
 	// these nodes have not responded since the last protocol period
 	for _, node := range nodes {
-		if node.LastAckTime.Before(periodStartTime) {
+		if node.LastAckTime.IsZero() || node.LastAckTime.Before(periodStartTime) {
 			d.stateUpdate(node, Suspect, true)
 		}
 	}
@@ -387,13 +379,12 @@ func (d *Detector) suspected(periodStartTime time.Time, nodes []*InternalNode) {
 
 	// determine which nodes have died
 	for id, node := range d.suspects {
-
 		if node.State != Suspect {
 
 			// if the node is not suspect, then it's alive or dead (as a cat)
 			delete(d.suspects, id)
 
-		} else if node.LastAckTime.Before(deathTime) {
+		} else if node.LastAckTime.IsZero() || node.LastAckTime.Before(deathTime) {
 
 			// the node is dead if it hasn't disputed its suspicion
 			d.stateUpdate(node, Dead, true)
@@ -530,7 +521,7 @@ func (d *Detector) handleAck(lastTick time.Time, event *AckEvent) {
 	node := d.lookup(event.From, nil)
 
 	// check the timestamp
-	if lastTick.IsZero() {
+	if lastTick.IsZero() || node.LastAckTime.IsZero() {
 		// no-op
 	} else if event.Time.IsZero() || event.Time.Before(lastTick) {
 		// ignore if invalid time or very late response
@@ -748,7 +739,9 @@ func (d *Detector) sendTo(node *InternalNode, events ...interface{}) {
 	msg.Incarnation = node.Incarnation
 
 	// add anti-entropy first, if needed, to be processed first at remote node
-	if i := d.localNode.Incarnation.Get(); node.RemoteIncarnation.Compare(i) < 0 {
+	if node.LastAckTime.IsZero() {
+		msg.AddEvent(d.antiEntropy())
+	} else if i := d.localNode.Incarnation.Get(); node.RemoteIncarnation.Compare(i) < 0 {
 		msg.AddEvent(d.antiEntropy())
 		node.RemoteIncarnation.Witness(i)
 	}
