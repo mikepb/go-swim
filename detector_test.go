@@ -107,6 +107,12 @@ func TestDetector(t *testing.T) {
 		t.Fatalf("N1 did not consider N2 not suspect %v", u)
 	}
 
+	// leave
+	n2.DirectProbes = 1
+	n2.Leave()
+	if u := <-n1.UpdateCh; u.State != Dead {
+		t.Fatalf("N1 did not consider N2 dead %v", u)
+	}
 
 
 	// indirect probe

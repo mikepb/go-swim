@@ -189,11 +189,12 @@ func (d *Detector) Close() error {
 }
 
 // Join the failure detection group by sending a join intent to the nodes
-// represented by the given addresses.
+// represented by the given addresses. The detector is started if not
+// already running.
 func (d *Detector) Join(addrs ...string) {
 
 	if !d.started {
-		panic("not started")
+		d.Start()
 	}
 
 	// request to send join events
@@ -212,15 +213,27 @@ func (d *Detector) sendJoinIntent(addrs []string) {
 	}
 }
 
-// Broadcast an intent to leave the group.
+// Broadcast an intent to leave the group. The detector is stopped if not
+// already stopped.
 func (d *Detector) Leave() {
 
-	if !d.started {
-		panic("not started")
+	if d.started {
+		d.Stop()
 	}
 
-	// broadcast death event
-	d.BroadcastSync(d.deathNode(&d.LocalNode))
+	// we're dead
+	d.LocalNode.State = Dead
+
+	// prepare death message
+	msg := new(Message)
+	msg.AddEvent(d.deathNode(&d.LocalNode))
+
+	// send the death broadcast
+	nodes := d.nodes.List()
+	for i, n, m := 0, len(nodes), int(d.IndirectProbes); i < n && i < m; i += 1 {
+		node := nodes[i]
+		d.broker.DirectTo(node.Addrs, msg)
+	}
 }
 
 // Broadcast an event asynchronously. If the detector is not running, the
