@@ -43,6 +43,22 @@ func TestFingerSorter(t *testing.T) {
 	}
 }
 
+func TestRingSorter(t *testing.T) {
+	nodes, localNode := makeTestNodes()
+	if err := RingSorter(nodes, localNode); err != nil {
+		t.Fatal(err)
+	}
+
+	expect := []uint64{9, 1, 2, 3, 4, 5, 6}
+	actual := make([]uint64, len(expect))
+	for i, v := range nodes {
+		actual[i] = v.Id
+		if v.Id != expect[i] {
+			t.Fatalf("expected order %v got %v", expect, actual)
+		}
+	}
+}
+
 func TestXorSorter(t *testing.T) {
 	nodes, localNode := makeTestNodes()
 	if err := XorSorter(nodes, localNode); err != nil {

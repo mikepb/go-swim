@@ -50,6 +50,20 @@ func FingerSorter(nodes []*InternalNode, localNode *Node) error {
 	return nil
 }
 
+// Sort using successors on a ring.
+func RingSorter(nodes []*InternalNode, localNode *Node) error {
+
+	// cache ring position calculation
+	for _, node := range nodes {
+		if node.SortValue == 0 {
+			node.SortValue = uint64(int64(node.Id) - int64(localNode.Id))
+		}
+	}
+
+	sort.Sort(byValue(nodes))
+	return nil
+}
+
 // Sort using the Kademlia XOR distance metric.
 func XorSorter(nodes []*InternalNode, localNode *Node) (err error) {
 
