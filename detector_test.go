@@ -59,6 +59,10 @@ func TestDetector(t *testing.T) {
 	start()
 	defer close()
 
+	// these joins should be ignored
+	n1.Join(n1.LocalNode.Addrs[0])
+	n2.Join(n2.LocalNode.Addrs[0])
+
 	// join
 	n2.Join(n1.LocalNode.Addrs[0])
 

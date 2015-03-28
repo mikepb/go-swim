@@ -203,9 +203,18 @@ func (d *Detector) sendJoinIntent(addrs []string) {
 	msg := new(Message)
 	msg.AddEvent(d.aliveNode(&d.LocalNode))
 
+	// don't send to self
+	ignore := make(map[string]bool)
+	for _, addr := range d.LocalNode.Addrs {
+		ignore[addr] = true
+	}
+
 	// send the event directly to the given addresses
 	for _, addy := range addrs {
-		d.broker.DirectTo([]string{addy}, msg)
+		if !ignore[addy] {
+			d.broker.DirectTo([]string{addy}, msg)
+			ignore[addy] = true
+		}
 	}
 }
 
@@ -441,6 +450,11 @@ func (d *Detector) handle(lastTick time.Time, msg *Message) {
 	// witness global incarnation number
 	d.incarnation.Witness(msg.Incarnation)
 
+	// just in case, ignore messages from self
+	if msg.From == d.LocalNode.Id {
+		return
+	}
+
 	// anti-entropy
 	if msg.To == d.LocalNode.Id {
 		node := d.lookup(msg.From, nil)
@@ -508,6 +522,11 @@ func (d *Detector) handlePing(event *PingEvent) {
 	// lookup the node
 	node := d.lookup(event.From, nil)
 
+	// just in case, ignore pings from self
+	if event.From == d.LocalNode.Id {
+		return
+	}
+
 	// can't acknowledge without return address
 	if len(node.Addrs) == 0 {
 		return
@@ -525,6 +544,11 @@ func (d *Detector) handlePing(event *PingEvent) {
 // Handle indirect ping requests.
 func (d *Detector) handleIndirectPingRequest(event *IndirectPingRequestEvent) {
 
+	// just in case, ignore pings from self or to self
+	if event.From == d.LocalNode.Id || event.Target == d.LocalNode.Id {
+		return
+	}
+
 	// lookup the nodes
 	from := d.lookup(event.From, event.Addrs)
 	target := d.lookup(event.Target, event.TargetAddrs)
@@ -536,6 +560,11 @@ func (d *Detector) handleIndirectPingRequest(event *IndirectPingRequestEvent) {
 // Handle indirect pings.
 func (d *Detector) handleIndirectPing(event *IndirectPingEvent) {
 
+	// just in case, ignore pings from self or to self
+	if event.From == d.LocalNode.Id || event.Via == d.LocalNode.Id {
+		return
+	}
+
 	// lookup the nodes
 	node := d.lookup(event.From, event.Addrs)
 	via := d.lookup(event.Via, event.ViaAddrs)
@@ -546,6 +575,11 @@ func (d *Detector) handleIndirectPing(event *IndirectPingEvent) {
 
 // Handle acknowledgements.
 func (d *Detector) handleAck(lastTick time.Time, event *AckEvent) {
+
+	// just in case, ignore acks from self
+	if event.From == d.LocalNode.Id {
+		return
+	}
 
 	// lookup the node
 	node := d.lookup(event.From, nil)
@@ -577,6 +611,11 @@ func (d *Detector) handleAck(lastTick time.Time, event *AckEvent) {
 
 // Handle indirect acknowledgement.
 func (d *Detector) handleIndirectAck(lastTick time.Time, event *IndirectAckEvent) {
+
+	// just in case, ignore acks from self
+	if event.Via == d.LocalNode.Id {
+		return
+	}
 
 	// handle the ack locally
 	d.handleAck(lastTick, &event.AckEvent)
@@ -636,7 +675,11 @@ func (d *Detector) handleStateBroadcast(event BroadcastEvent, id uint64, incarna
 
 	// if self
 	if id == d.LocalNode.Id {
-		if d.LocalNode.Incarnation.Compare(incarnation) < 0 {
+		cmp := d.LocalNode.Incarnation.Compare(incarnation)
+		// if our incarnation number is less than the state broadcast or
+		// if our incarnation number is the same but we're not the source
+		if cmp < 0 || cmp == 0 && event.Source() != d.LocalNode.Id {
+			// then we dispute the update
 			d.Broadcast(d.aliveNode(&d.LocalNode))
 		}
 		return
