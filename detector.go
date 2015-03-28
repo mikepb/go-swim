@@ -2,7 +2,6 @@ package swim
 
 import (
 	"log"
-	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -36,9 +35,6 @@ type Detector struct {
 	activeListRequest  chan struct{}
 	activeListResponse chan []Node
 	joins              chan []string
-
-	// Concurrency control.
-	sendLock sync.Mutex
 
 	// The local node identifies this instance of the failure detector. The
 	// node ID must be unique for all nodes. In addition, the node addresses
@@ -239,9 +235,7 @@ func (d *Detector) Leave() {
 // Broadcast an event asynchronously. If the detector is not running, the
 // broadcast will be sent when the detector is started.
 func (d *Detector) Broadcast(event BroadcastEvent) {
-	d.sendLock.Lock()
 	d.broker.Broadcast(event)
-	d.sendLock.Unlock()
 }
 
 // Broadcast an event and wait for the broadcast to be removed from the
@@ -249,10 +243,7 @@ func (d *Detector) Broadcast(event BroadcastEvent) {
 // transmission limit. If the detector is not running or there are no nodes
 // other than the local node, the call will block indefinitely.
 func (d *Detector) BroadcastSync(event BroadcastEvent) {
-	d.sendLock.Lock()
-	done := d.broker.BroadcastSync(event)
-	d.sendLock.Unlock()
-	<-done
+	<-d.broker.BroadcastSync(event)
 }
 
 // Retrieve a list of member nodes that have not been marked as dead. The
@@ -810,12 +801,8 @@ func (d *Detector) sendTo(node *InternalNode, events ...interface{}) {
 	// add the event
 	msg.AddEvent(events...)
 
-	// lock for sending
-	d.sendLock.Lock()
-	defer d.sendLock.Unlock()
-
 	// send the message with piggybacked broadcasts
-	d.broker.BroadcastLimit = d.retransmitLimit()
+	d.broker.SetBroadcastLimit(d.retransmitLimit())
 	d.broker.SendTo(node.Addrs, msg)
 
 	if d.Logger != nil {

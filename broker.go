@@ -1,12 +1,19 @@
 package swim
 
+import (
+	"sync"
+	"sync/atomic"
+)
+
 // Broker handles piggybacked broadcast messages, transport, and encoding.
+// The methods on this object are safe to call from multiple goroutines.
 type Broker struct {
-	Transport                      // The transport implementation to use
-	Codec          Codec           // The codec implementation to use
-	BroadcastLimit uint            // The broadcast transmission limit
-	Broadcasts     *BroadcastQueue // Broadcast queue
-	bEstimate      float64         // Estimate of the number of broadcasts to send
+	Transport                  // The transport implementation to use
+	Codec      Codec           // The codec implementation to use
+	Broadcasts *BroadcastQueue // Broadcast queue
+	l          sync.Mutex      // Broadcast lock.
+	bEstimate  float64         // Estimate of the number of broadcasts to send
+	limit      uint32          // The broadcast transmission limit
 }
 
 // Create a new broker.
@@ -16,6 +23,14 @@ func NewBroker(transport Transport, codec Codec) *Broker {
 		Codec:      codec,
 		Broadcasts: NewBroadcastQueue(),
 	}
+}
+
+func (b *Broker) SetBroadcastLimit(limit uint) {
+	atomic.StoreUint32(&b.limit, uint32(limit))
+}
+
+func (b *Broker) BroadcastLimit() uint {
+	return uint(atomic.LoadUint32(&b.limit))
 }
 
 // Receive and decode a message from the network.
@@ -67,6 +82,10 @@ func (b *Broker) SendTo(addrs []string, msg *Message) error {
 // Encode the given message after piggybacking broadcasts.
 func (b *Broker) encodeWithBroadcasts(coded *CodedMessage) error {
 
+	// lock for concurrent access
+	b.l.Lock()
+	defer b.l.Unlock()
+
 	// attach broadcasts
 	if bcasts := b.Broadcasts.List(); len(bcasts) > 0 {
 		max := len(bcasts)
@@ -96,8 +115,9 @@ func (b *Broker) encodeWithBroadcasts(coded *CodedMessage) error {
 		}
 
 		// prune the queue and re-sort
+		limit := b.BroadcastLimit()
 		b.Broadcasts.Prune(func(bcast *Broadcast) bool {
-			return bcast.Attempts >= b.BroadcastLimit
+			return bcast.Attempts >= limit
 		})
 	}
 
@@ -127,6 +147,12 @@ func (b *Broker) encodeWithBroadcasts(coded *CodedMessage) error {
 
 // Queue a broadcast event.
 func (b *Broker) Broadcast(event BroadcastEvent) {
+
+	// lock for concurrent access
+	b.l.Lock()
+	defer b.l.Unlock()
+
+	// add broadcast to queue
 	b.Broadcasts.Push(&Broadcast{Class: 2, Event: event})
 }
 
@@ -135,6 +161,14 @@ func (b *Broker) Broadcast(event BroadcastEvent) {
 // broadcast transmission limit.
 func (b *Broker) BroadcastSync(event BroadcastEvent) chan struct{} {
 	done := make(chan struct{}, 1)
+
+	// lock for concurrent access
+	b.l.Lock()
+	defer b.l.Unlock()
+
+	// add broadcast to queue with high priority
 	b.Broadcasts.Push(&Broadcast{Class: 1, Event: event, Done: done})
+
+	// return async channel
 	return done
 }

@@ -83,7 +83,7 @@ func TestBroker(t *testing.T) {
 
 	// test broadcast
 	suspectEvent := SuspectEvent{13, 19, Seq(8)}
-	broker.BroadcastLimit = 1
+	broker.SetBroadcastLimit(1)
 	broker.Broadcast(&suspectEvent)
 
 	// test sending
