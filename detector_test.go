@@ -99,10 +99,10 @@ func TestDetector(t *testing.T) {
 	// stop N2 from pinging
 	n2.DirectProbes = 0
 
-	// N1 should suspect N1
+	// N1 should eventually suspect N2
 	n2.Stop()
 	if u := <-n1.UpdateCh; u.State != Suspect {
-		t.Fatalf("N1 did not suspect N2")
+		t.Fatalf("N1 did not suspect N2 %v", u)
 	}
 
 	// N1 should consider N2 alive
@@ -152,8 +152,10 @@ func TestDetector(t *testing.T) {
 		t.Fatalf("N1 did not receive N3 join message %v != %v", u, inode3.LocalNode)
 	}
 
-	// N1 should consider N3 alive via indirect ping
+	inode1.UpdateCh = nil
 	time.Sleep(time.Second)
+
+	// N1 should consider N3 alive via indirect ping
 	if n := inode1.ActiveCount(); n != 2 {
 		t.Fatalf("N1 should report two active nodes got %v", n)
 	}

@@ -227,6 +227,7 @@ func (d *Detector) Leave() {
 	}
 
 	// we're dead
+	d.LocalNode.Incarnation.Witness(d.incarnation.Increment())
 	d.LocalNode.State = Dead
 
 	// prepare death message
@@ -607,7 +608,6 @@ func (d *Detector) handleAck(lastTick time.Time, event *AckEvent) {
 
 	// send alive message if node isn't marked as alive
 	if node.State != Alive {
-		d.Logger.Printf("ACK %v %v", d.LocalNode.Id, node.Node)
 		d.stateUpdate(node, Alive, true)
 	}
 }
@@ -639,6 +639,7 @@ func (d *Detector) handleAntiEntropy(event *AntiEntropyEvent) {
 
 	// just in case, ignore anti-entropy from self
 	if event.Id == d.LocalNode.Id {
+		d.Broadcast(d.aliveNode(&d.LocalNode))
 		return
 	}
 
@@ -688,6 +689,7 @@ func (d *Detector) handleStateBroadcast(event BroadcastEvent, id uint64, incarna
 		// if our incarnation number is the same but we're not the source
 		if cmp < 0 || cmp == 0 && event.Source() != d.LocalNode.Id {
 			// then we dispute the update
+			d.LocalNode.Incarnation.Witness(d.incarnation.Increment())
 			d.Broadcast(d.aliveNode(&d.LocalNode))
 		}
 		return
@@ -708,9 +710,6 @@ func (d *Detector) handleStateBroadcast(event BroadcastEvent, id uint64, incarna
 
 		// trigger state update for this new incarnation
 		d.stateUpdate(node, state, false)
-
-		// re-broadcast
-		d.Broadcast(event)
 
 	} else if cmp > 0 {
 
@@ -789,7 +788,6 @@ func (d *Detector) alive(node *InternalNode) *AliveEvent {
 
 // Broadcast news that a node is alive.
 func (d *Detector) aliveNode(node *Node) *AliveEvent {
-	node.Incarnation.Witness(d.incarnation.Increment())
 	return &AliveEvent{
 		From: d.LocalNode.Id,
 		Node: *node,
@@ -801,7 +799,7 @@ func (d *Detector) suspect(node *InternalNode) *SuspectEvent {
 	return &SuspectEvent{
 		From:        d.LocalNode.Id,
 		Id:          node.Id,
-		Incarnation: d.incarnation.Increment(),
+		Incarnation: node.Incarnation.Get(),
 	}
 }
 
@@ -815,7 +813,7 @@ func (d *Detector) deathNode(node *Node) *DeathEvent {
 	return &DeathEvent{
 		From:        d.LocalNode.Id,
 		Id:          node.Id,
-		Incarnation: d.incarnation.Increment(),
+		Incarnation: node.Incarnation.Get(),
 	}
 }
 
@@ -892,7 +890,7 @@ func (d *Detector) lookup(id uint64, addrs []string) *InternalNode {
 }
 
 // Consolidate node state updates.
-func (d *Detector) stateUpdate(node *InternalNode, state State, bcast bool) {
+func (d *Detector) stateUpdate(node *InternalNode, state State, reincarnate bool) {
 
 	// update node state
 	node.State = state
@@ -932,19 +930,12 @@ func (d *Detector) stateUpdate(node *InternalNode, state State, bcast bool) {
 	// update active count
 	atomic.StoreInt64(&d.activeCount, int64(len(d.actives)))
 
-	// notify update
-	if d.UpdateCh != nil {
-		defer func() { d.UpdateCh <- node.Node }()
-	}
-
-	// stop early if not broadcasting
-	if !bcast {
-		return
-	}
-
 	// reincarnate
-	node.Incarnation.Witness(d.incarnation.Increment())
+	if reincarnate {
+		node.Incarnation.Witness(d.incarnation.Increment())
+	}
 
+	// broadcast change in state
 	switch state {
 	case Alive:
 		d.Broadcast(d.alive(node))
@@ -952,6 +943,11 @@ func (d *Detector) stateUpdate(node *InternalNode, state State, bcast bool) {
 		d.Broadcast(d.suspect(node))
 	case Dead:
 		d.Broadcast(d.death(node))
+	}
+
+	// notify update
+	if d.UpdateCh != nil {
+		defer func() { d.UpdateCh <- node.Node }()
 	}
 }
 

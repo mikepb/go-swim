@@ -22,6 +22,7 @@ func NewBroker(transport Transport, codec Codec) *Broker {
 		Transport:  transport,
 		Codec:      codec,
 		Broadcasts: NewBroadcastQueue(),
+		bEstimate:  2.0,
 	}
 }
 
