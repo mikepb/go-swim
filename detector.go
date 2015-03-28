@@ -634,6 +634,11 @@ func (d *Detector) handleIndirectAck(lastTick time.Time, event *IndirectAckEvent
 // Handle anti-entropy event.
 func (d *Detector) handleAntiEntropy(event *AntiEntropyEvent) {
 
+	// just in case, ignore anti-entropy from self
+	if event.Id == d.LocalNode.Id {
+		return
+	}
+
 	// lookup the node
 	node := d.lookup(event.Id, nil)
 
