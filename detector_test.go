@@ -15,7 +15,7 @@ func TestDetector(t *testing.T) {
 	router := NewSimRouter()
 	nodes := []*Detector{}
 
-	node := func() *Detector {
+	node := func(router *SimRouter) *Detector {
 		id := uint64(rand.Int63())
 		name := fmt.Sprintf("node %v", id)
 		d := &Detector{
@@ -52,8 +52,8 @@ func TestDetector(t *testing.T) {
 		}
 	}
 
-	n1 := node()
-	n2 := node()
+	n1 := node(router)
+	n2 := node(router)
 
 	// start the nodes
 	start()
@@ -114,14 +114,43 @@ func TestDetector(t *testing.T) {
 		t.Fatalf("N1 did not consider N2 dead %v", u)
 	}
 
+	close()
 
-	// indirect probe
+	router = nil
+	router_1_2 := NewSimRouter()
+	router_2_3 := NewSimRouter()
+	nodes = nil
 
-	// suspect
-	// alive
+	inode1 := node(router_2_3)
+	inode2 := node(router_2_3)
+	inode3 := node(router_2_3)
 
-	// suspect
-	// dead
+	// node 1 can only reach node 2
+	router_1_2.Routes[inode2.LocalNode.Addrs[0]] = inode2.Transport.(*SimTransport)
 
-	// leave
+	inode2.DirectProbes = 0
+	inode3.DirectProbes = 0
+	inode2.UpdateCh = nil
+	inode3.UpdateCh = nil
+
+	inode1.Start()
+	inode2.Join(inode1.LocalNode.Addrs[0])
+
+	// N1 should receive the join intent
+	if u := <-inode1.UpdateCh; !reflect.DeepEqual(u, inode2.LocalNode) {
+		t.Fatalf("N1 did not receive N2 join message %v != %v", u, inode2.LocalNode)
+	}
+
+	inode3.Join(inode1.LocalNode.Addrs[0])
+
+	// N1 should receive the join intent
+	if u := <-inode1.UpdateCh; !reflect.DeepEqual(u, inode3.LocalNode) {
+		t.Fatalf("N1 did not receive N3 join message %v != %v", u, inode3.LocalNode)
+	}
+
+	// N1 should consider N3 alive via indirect ping
+	time.Sleep(time.Second)
+	if n := inode1.ActiveCount(); n != 2 {
+		t.Fatalf("N1 should report two active nodes got %v", n)
+	}
 }
