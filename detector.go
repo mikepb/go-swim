@@ -390,13 +390,15 @@ func (d *Detector) suspected(periodStartTime time.Time, nodes []*InternalNode) {
 	// these nodes have not responded since the last protocol period
 	for _, node := range nodes {
 		if node.LastAckTime.IsZero() || node.LastAckTime.Before(periodStartTime) {
-			d.stateUpdate(node, Suspect, true)
+			if node.State != Suspect {
+				d.stateUpdate(node, Suspect, true)
+			}
 		}
 	}
 
 	// nodes that have not disputed their suspect status before this time are
 	// considered dead
-	deathTime := time.Now().Add(-d.suspicionTime())
+	deathTime := time.Now().Add(-d.SuspicionDuration())
 
 	// determine which nodes have died
 	for id, node := range d.suspects {
@@ -405,7 +407,8 @@ func (d *Detector) suspected(periodStartTime time.Time, nodes []*InternalNode) {
 			// if the node is not suspect, then it's alive or dead (as a cat)
 			delete(d.suspects, id)
 
-		} else if node.LastAckTime.IsZero() || node.LastAckTime.Before(deathTime) {
+		} else if !node.LastAckTime.IsZero() && node.LastAckTime.Before(deathTime) ||
+			!node.LastSentTime.IsZero() && node.LastSentTime.Before(deathTime) {
 
 			// the node is dead if it hasn't disputed its suspicion
 			d.stateUpdate(node, Dead, true)
@@ -850,8 +853,11 @@ func (d *Detector) sendTo(node *InternalNode, events ...interface{}) {
 	msg.AddEvent(events...)
 
 	// send the message with piggybacked broadcasts
-	d.broker.SetBroadcastLimit(d.retransmitLimit())
+	d.broker.SetBroadcastLimit(d.RetransmitLimit())
 	d.broker.SendTo(node.Addrs, msg)
+
+	// update last sent time
+	node.LastSentTime = time.Now()
 
 	if d.Logger != nil {
 		d.Logger.Printf("[send %v] %v", d.LocalNode.Id, msg)
@@ -987,20 +993,25 @@ func (d *Detector) boundedTimeout(nodes []*InternalNode) time.Duration {
 	return timeout
 }
 
-func (d *Detector) suspicionTime() time.Duration {
+// Calculate the suspicion duration after which a node is considered dead.
+func (d *Detector) SuspicionDuration() time.Duration {
 	// the suspicion time is calculated as mult*log(N+1); division by three is
 	// to convert from log base 2 to base 10 (approximately)
 	n := d.ActiveCount()
-	return (time.Duration(d.SuspicionMult) *
-		time.Duration(log2ceil(int(n)+1)) * d.ProbeInterval / 3)
-}
-
-func (d *Detector) retransmitLimit() uint {
-	// calculate the retransmission limit as mult*log(N+1); the division by three
-	n := d.ActiveCount()
-	i := uint(log2ceil(int(n)+1)) / 3
-	if i == 0 {
+	i := log2ceil(int(n)+1) / 3
+	if i < 1 {
 		i = 1
 	}
-	return d.RetransmitMult * i
+	return (time.Duration(d.SuspicionMult) * time.Duration(i) * d.ProbeInterval)
+}
+
+// Calculate the retransmission limit for broadcasts.
+func (d *Detector) RetransmitLimit() uint {
+	// calculate the retransmission limit as mult*log(N+1); the division by three
+	n := d.ActiveCount()
+	i := log2ceil(int(n)+1) / 3
+	if i < 1 {
+		i = 1
+	}
+	return d.RetransmitMult * uint(i)
 }

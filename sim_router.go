@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-const kNetDelay = 10 * time.Millisecond
-const kNetStdDev = 2 * time.Millisecond
+const kNetDelay = 5 * time.Millisecond
+const kNetStdDev = 1 * time.Millisecond
 const kMaxMessageLen = 512
 
 // SimRouter routes messages between SimTransports for the network

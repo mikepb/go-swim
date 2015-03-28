@@ -44,7 +44,7 @@ type IndirectPingRequestEvent struct {
 // Default format output.
 func (e IndirectPingRequestEvent) String() string {
 	return fmt.Sprintf(
-		"IndirectPingEvent{ From: %v, Addrs: %v, Target: %v, TargetAddrs: %v, Time: %v }",
+		"IndirectPingRequestEvent{ From: %v, Addrs: %v, Target: %v, TargetAddrs: %v, Time: %v }",
 		e.From, e.Addrs, e.Target, e.TargetAddrs, e.Time)
 }
 
@@ -60,8 +60,8 @@ type IndirectPingEvent struct {
 // Default format output.
 func (e IndirectPingEvent) String() string {
 	return fmt.Sprintf(
-		"IndirectPingEvent{ %v, Addrs: %v, Via: %v, ViaAddrs: %v, Time: %v }",
-		e.PingEvent, e.Addrs, e.Via, e.ViaAddrs, e.Time)
+		"IndirectPingEvent{ %v, Addrs: %v, Via: %v, ViaAddrs: %v, ViaTime: %v }",
+		e.PingEvent, e.Addrs, e.Via, e.ViaAddrs, e.ViaTime)
 }
 
 // An indirect ping response returns the successful indirect ping for a
@@ -77,7 +77,7 @@ type IndirectAckEvent struct {
 // Default format output.
 func (e IndirectAckEvent) String() string {
 	return fmt.Sprintf(
-		"IndirectAckEvent{ %v, Addrs: %v, Via: %v, ViaTime: %v }",
+		"IndirectAckEvent{ %v, Via: %v, ViaTime: %v }",
 		e.AckEvent, e.Via, e.ViaTime)
 }
 
