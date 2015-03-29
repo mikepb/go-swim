@@ -101,11 +101,16 @@ func TestDetector(t *testing.T) {
 
 	// N1 should eventually suspect N2
 	n2.Stop()
+RETRY_SUSPECT:
 	if u := <-n1.UpdateCh; u.State != Suspect {
+		if u.State == Alive {
+			goto RETRY_SUSPECT
+		}
 		t.Fatalf("N1 did not suspect N2 %v", u)
 	}
 
 	// N1 should eventually consider N2 alive
+	n2.DirectProbes = 1
 	n2.Start()
 RETRY_REJOIN:
 	if u := <-n1.UpdateCh; u.State != Alive {

@@ -32,8 +32,8 @@ type Detector struct {
 	started  bool
 	stopping chan struct{}
 	stopped  chan struct{}
-	messages chan *Message
 	joins    chan []string
+	period   time.Time
 
 	// Concurrency control.
 	l sync.Mutex
@@ -123,7 +123,6 @@ func (d *Detector) Start() {
 		// create channels
 		d.stopping = make(chan struct{}, 1)
 		d.stopped = make(chan struct{}, 1)
-		d.messages = make(chan *Message, kBufferSize)
 		d.joins = make(chan []string, 1)
 
 		// create maps
@@ -294,7 +293,6 @@ func (d *Detector) ActiveCount() int {
 // Run the failure detector loop.
 func (d *Detector) loop() {
 	var probedNodes []*InternalNode
-	var periodStartTime time.Time
 
 	ticker := time.NewTicker(d.ProbeInterval)
 	defer ticker.Stop()
@@ -309,31 +307,25 @@ func (d *Detector) loop() {
 			d.stopped <- struct{}{}
 			return
 
-		case msg := <-d.messages: // handle messages
+		case <-timer.C: // probe timeout
 			d.l.Lock()
-			d.handle(periodStartTime, msg)
+			if !d.period.IsZero() && probedNodes != nil {
+				d.indirectProbe(probedNodes)
+			}
 			d.l.Unlock()
 
-		case <-timer.C: // probe timeout
-			if !periodStartTime.IsZero() && probedNodes != nil {
-				d.l.Lock()
-				d.indirectProbe(periodStartTime, probedNodes)
-				d.l.Unlock()
-			}
-
 		case t := <-ticker.C: // protocol period
+			d.l.Lock()
 
 			// handle suspicion from the previous protocol period
-			if !periodStartTime.IsZero() && probedNodes != nil {
-				d.l.Lock()
-				d.suspected(periodStartTime, probedNodes)
-				d.l.Unlock()
+			if !d.period.IsZero() && probedNodes != nil {
+				d.suspected(probedNodes)
 			}
-			periodStartTime = t
+			d.period = t
 
 			// send out the probes
-			d.l.Lock()
 			probedNodes = d.probe()
+
 			d.l.Unlock()
 
 			// set the timer for maybe sending indirect probes
@@ -368,7 +360,7 @@ func (d *Detector) probe() (nodes []*InternalNode) {
 }
 
 // Send indirect probes.
-func (d *Detector) indirectProbe(periodStartTime time.Time, nodes []*InternalNode) {
+func (d *Detector) indirectProbe(nodes []*InternalNode) {
 
 	// so that we don't ask the probe targets to probe themselves
 	flags := make(map[uint64]bool)
@@ -376,7 +368,7 @@ func (d *Detector) indirectProbe(periodStartTime time.Time, nodes []*InternalNod
 	// batch requests for the indirect probes
 	requests := []interface{}{}
 	for _, node := range nodes {
-		if node.LastAckTime.IsZero() || node.LastAckTime.Before(periodStartTime) {
+		if node.LastAckTime.IsZero() || node.LastAckTime.Before(d.period) {
 			requests = append(requests, d.pingRequest(node))
 			flags[node.Id] = true
 		}
@@ -408,11 +400,11 @@ func (d *Detector) indirectProbe(periodStartTime time.Time, nodes []*InternalNod
 }
 
 // Send suspect events.
-func (d *Detector) suspected(periodStartTime time.Time, nodes []*InternalNode) {
+func (d *Detector) suspected(nodes []*InternalNode) {
 
 	// these nodes have not responded since the last protocol period
 	for _, node := range nodes {
-		if node.LastAckTime.IsZero() || node.LastAckTime.Before(periodStartTime) {
+		if node.LastAckTime.IsZero() || node.LastAckTime.Before(d.period) {
 			if node.State != Suspect {
 				d.stateUpdate(node, Suspect, true)
 			}
@@ -432,24 +424,19 @@ func (d *Detector) suspected(periodStartTime time.Time, nodes []*InternalNode) {
 			continue
 		}
 
-		// if none of these cases match
-		if !node.LastAckTime.IsZero() {
-			if node.LastAckTime.After(deathTime) {
-				continue
-			}
-		} else if !node.LastSentTime.IsZero() {
-			if node.LastSentTime.After(deathTime) {
-				continue
-			}
-		} else {
-			// some other node suspects
+		// node is still suspect
+		if !node.LastAckTime.IsZero() && node.LastAckTime.After(deathTime) {
+			continue
+		}
+
+		// we haven't contacted this node yet
+		if node.LastSentTime.IsZero() {
 			continue
 		}
 
 		// the node is dead if it hasn't disputed its suspicion
 		d.stateUpdate(node, Dead, true)
 		delete(d.suspects, id)
-
 	}
 }
 
@@ -462,6 +449,13 @@ func (d *Detector) recv() {
 
 		// receive message from broker
 		msg, err := d.broker.Recv()
+
+		// drop this message if we're stopped
+		if !d.started {
+			return
+		}
+
+		// log errors
 		if err != nil {
 			if d.Logger != nil {
 				d.Logger.Printf("[recv %v] %v", d.LocalNode.Id, err)
@@ -474,12 +468,13 @@ func (d *Detector) recv() {
 			d.Logger.Printf("[recv %v] %v", d.LocalNode.Id, msg)
 		}
 
-		// queue messages
-		d.messages <- msg
+		// handle the message
+		d.handle(msg)
 	}
 }
 
-func (d *Detector) handle(lastTick time.Time, msg *Message) {
+func (d *Detector) handle(msg *Message) {
+	d.l.Lock()
 
 	// witness global incarnation number
 	d.incarnation.Witness(msg.Incarnation)
@@ -496,7 +491,7 @@ func (d *Detector) handle(lastTick time.Time, msg *Message) {
 		// process anti-entropy event
 		if len(events) > 0 {
 			if event, ok := events[0].(*AntiEntropyEvent); ok {
-				d.handleEvent(lastTick, event)
+				d.handleEvent(event)
 				events = events[1:]
 			}
 		}
@@ -512,24 +507,24 @@ func (d *Detector) handle(lastTick time.Time, msg *Message) {
 
 	// queue events
 	for _, event := range events {
-		d.handleEvent(lastTick, event)
+		d.handleEvent(event)
 	}
+
+	d.l.Unlock()
 
 	// trigger message update
 	if d.MessageCh != nil {
-		d.l.Unlock()
 		d.MessageCh <- *msg
-		d.l.Lock()
 	}
 }
 
-func (d *Detector) handleEvent(lastTick time.Time, event interface{}) {
+func (d *Detector) handleEvent(event interface{}) {
 	switch event := event.(type) {
 	case PingEvent:
 		d.handlePing(&event)
 
 	case AckEvent:
-		d.handleAck(lastTick, &event)
+		d.handleAck(&event)
 
 	case IndirectPingRequestEvent:
 		d.handleIndirectPingRequest(&event)
@@ -538,7 +533,7 @@ func (d *Detector) handleEvent(lastTick time.Time, event interface{}) {
 		d.handleIndirectPing(&event)
 
 	case IndirectAckEvent:
-		d.handleIndirectAck(lastTick, &event)
+		d.handleIndirectAck(&event)
 
 	case AntiEntropyEvent:
 		d.handleAntiEntropy(&event)
@@ -615,7 +610,7 @@ func (d *Detector) handleIndirectPing(event *IndirectPingEvent) {
 }
 
 // Handle acknowledgements.
-func (d *Detector) handleAck(lastTick time.Time, event *AckEvent) {
+func (d *Detector) handleAck(event *AckEvent) {
 
 	// just in case, ignore acks from self
 	if event.From == d.LocalNode.Id {
@@ -626,12 +621,12 @@ func (d *Detector) handleAck(lastTick time.Time, event *AckEvent) {
 	node := d.lookup(event.From, nil)
 
 	// check the timestamp
-	if lastTick.IsZero() || node.LastAckTime.IsZero() {
+	if d.period.IsZero() || node.LastAckTime.IsZero() {
 		// no-op
-	} else if node.LastAckTime.After(lastTick) {
+	} else if node.LastAckTime.After(d.period) {
 		// node already acknowledged
 		return
-	} else if event.Time.IsZero() || event.Time.Before(lastTick) {
+	} else if event.Time.IsZero() || event.Time.Before(d.period) {
 		// ignore if invalid time or very late response
 		return
 	}
@@ -650,7 +645,7 @@ func (d *Detector) handleAck(lastTick time.Time, event *AckEvent) {
 }
 
 // Handle indirect acknowledgement.
-func (d *Detector) handleIndirectAck(lastTick time.Time, event *IndirectAckEvent) {
+func (d *Detector) handleIndirectAck(event *IndirectAckEvent) {
 
 	// just in case, ignore acks from self
 	if event.Via == d.LocalNode.Id {
@@ -658,7 +653,7 @@ func (d *Detector) handleIndirectAck(lastTick time.Time, event *IndirectAckEvent
 	}
 
 	// handle the ack locally
-	d.handleAck(lastTick, &event.AckEvent)
+	d.handleAck(&event.AckEvent)
 
 	// lookup the node
 	node := d.lookup(event.Via, nil)
@@ -884,6 +879,9 @@ func (d *Detector) sendTo(node *InternalNode, events ...interface{}) {
 	// add the event
 	msg.AddEvent(events...)
 
+	// re-broadcast self at low priority
+	d.broker.BroadcastL(d.aliveNode(&d.LocalNode))
+
 	// send the message with piggybacked broadcasts
 	d.broker.SetBroadcastLimit(d.RetransmitLimit())
 	d.broker.SendTo(node.Addrs, msg)
@@ -972,10 +970,8 @@ func (d *Detector) stateUpdate(node *InternalNode, state State, reincarnate bool
 	}
 
 	// remove from suspects list
-	if node.State != Suspect {
-		if _, ok := d.suspects[node.Id]; ok {
-			delete(d.suspects, node.Id)
-		}
+	if state != Suspect {
+		delete(d.suspects, node.Id)
 	}
 
 	// update active count

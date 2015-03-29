@@ -3,6 +3,7 @@ package swim
 import (
 	"math/rand"
 	"runtime"
+	"sync"
 	"time"
 )
 
@@ -18,6 +19,7 @@ type SimRouter struct {
 	NetDelay      time.Duration
 	NetStdDev     time.Duration
 	MaxMessageLen int
+	l             sync.Mutex
 }
 
 // Create a new SimRouter.
@@ -76,7 +78,13 @@ func (r *SimRouter) SendTo(addrs []string, message *CodedMessage) error {
 // Generate a normally distributed time delay with a mean of NetDelay and
 // standard deviation of NetStdDev.
 func (r *SimRouter) Delay() time.Duration {
-	d := time.Duration(r.Rand.NormFloat64()*float64(r.NetStdDev)) + r.NetDelay
+
+	// rand is not concurrent
+	r.l.Lock()
+	n := r.Rand.NormFloat64()
+	r.l.Unlock()
+
+	d := time.Duration(n*float64(r.NetStdDev)) + r.NetDelay
 	if d < 0 {
 		return 0
 	}

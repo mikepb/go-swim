@@ -148,13 +148,22 @@ func (b *Broker) encodeWithBroadcasts(coded *CodedMessage) error {
 
 // Queue a broadcast event.
 func (b *Broker) Broadcast(event BroadcastEvent) {
+	b.broadcastWithPriority(event, 2)
+}
+
+// Queue a low-priority broadcast event.
+func (b *Broker) BroadcastL(event BroadcastEvent) {
+	b.broadcastWithPriority(event, 3)
+}
+
+func (b *Broker) broadcastWithPriority(event BroadcastEvent, prio uint) {
 
 	// lock for concurrent access
 	b.l.Lock()
 	defer b.l.Unlock()
 
 	// add broadcast to queue
-	b.Broadcasts.Push(&Broadcast{Class: 2, Event: event})
+	b.Broadcasts.Push(&Broadcast{Class: prio, Event: event})
 }
 
 // Broadcast an event and notify on the done channel when the broadcast is

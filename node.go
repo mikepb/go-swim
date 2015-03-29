@@ -14,6 +14,20 @@ const (
 	Dead          // Node is confirmed as failed
 )
 
+// Human-friendly state string.
+func (s State) String() string {
+	switch s {
+	case Alive:
+		return "alive"
+	case Suspect:
+		return "suspect"
+	case Dead:
+		return "dead"
+	default:
+		return "unknown"
+	}
+}
+
 // Node describes a member of the group.
 type Node struct {
 	Id          uint64      // Big-endian 64-bit ID, e.g. IEEE EUI-64 format

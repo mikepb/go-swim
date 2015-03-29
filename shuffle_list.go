@@ -19,32 +19,48 @@ func (l *ShuffleList) Add(nodes ...*InternalNode) {
 
 // Remove nodes from the list.
 func (l *ShuffleList) Remove(nodes ...*InternalNode) {
-	// TODO: make this more efficient
-	end := len(l.Nodes)
+
+	// make id map of nodes to remove
+	rms := make(map[uint64]bool)
+	for _, node := range nodes {
+		rms[node.Id] = true
+	}
+
+	// remove from current list
+	l.Nodes = l.remove(l.Nodes, rms, l.nextIndex)
+
+	// remove from next list
+	if l.NextNodes != nil {
+		l.NextNodes = l.remove(l.NextNodes, rms, 0)
+	}
+}
+
+func (s *ShuffleList) remove(nodes []*InternalNode, removes map[uint64]bool, nextIndex int) []*InternalNode {
+	end := len(nodes)
 	start := 0
 
 	// for each node in the shuffle list
 	for i := 0; i < end; i += 1 {
+		node := nodes[i]
 
 		// check if it matches any of the nodes to be removed
-		for _, n := range nodes {
-			if l.Nodes[i] == n {
+		if !removes[node.Id] {
+			continue
+		}
 
-				if i < l.nextIndex {
-					// if we've already visited this node, swap with first node
-					l.Nodes[i] = l.Nodes[start]
-					start += 1
-				} else {
-					// otherwise, swap with last
-					end -= 1
-					l.Nodes[i] = l.Nodes[end]
-				}
-			}
+		if i < nextIndex {
+			// if we've already visited this node, swap with first node
+			nodes[i] = nodes[start]
+			start += 1
+		} else {
+			// otherwise, swap with last
+			end -= 1
+			nodes[i] = nodes[end]
 		}
 	}
 
 	// trim unused slots
-	l.Nodes = l.Nodes[start:end]
+	return nodes[start:end]
 }
 
 // Select a node from the list.
@@ -87,6 +103,7 @@ func (l *ShuffleList) Next() *InternalNode {
 func (l *ShuffleList) SetNext(nodes []*InternalNode) {
 	if len(l.Nodes) == 0 {
 		l.Nodes, l.NextNodes = nodes, nil
+		l.Shuffle()
 	} else {
 		l.NextNodes = nodes
 	}

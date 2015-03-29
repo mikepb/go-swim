@@ -30,7 +30,7 @@ func (t *SimTransport) MaxMessageLen() int {
 // SimRouter.
 func (t *SimTransport) SendTo(addr []string, message *CodedMessage) error {
 	if t.Closed {
-		panic("closed")
+		return errors.New("closed")
 	}
 	return t.Router.SendTo(addr, message)
 }
@@ -38,7 +38,7 @@ func (t *SimTransport) SendTo(addr []string, message *CodedMessage) error {
 // Receive a message from the receiving message queue.
 func (t *SimTransport) Recv() (*CodedMessage, error) {
 	if t.Closed {
-		panic("closed")
+		return nil, errors.New("closed")
 	}
 	if coded, ok := <-t.RecvCh; !ok {
 		return nil, errors.New("closed")

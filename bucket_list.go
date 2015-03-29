@@ -1,9 +1,5 @@
 package swim
 
-import (
-// "math"
-)
-
 // A bucket list selects nodes using round-robin over buckets of nodes. Each
 // bucket is at least twice as large as the next smaller bucket. The methods
 // are not safe to run concurrently.
@@ -31,27 +27,51 @@ func (l *BucketList) Add(nodes ...*InternalNode) {
 	}
 
 	// set next set of nodes
-	l.SetNext(append(l.nodes, nodes...))
+	l.setNext(append(l.nodes, nodes...))
 }
 
 // Remove nodes from the list.
 func (l *BucketList) Remove(removes ...*InternalNode) {
-	// TODO: make this more efficient
-	nodes := make([]*InternalNode, 0, len(l.nodes))
-	for _, bucket := range l.buckets {
-		bucket.Remove(removes...)
-		nodes = append(nodes, bucket.List()...)
+
+	// make id map of nodes to remove
+	rms := make(map[uint64]bool)
+	for _, node := range removes {
+		rms[node.Id] = true
 	}
-	l.SetNext(nodes)
+
+	// make list of nodes
+	nodes := make([]*InternalNode, 0, len(l.nodes))
+	for _, node := range l.nodes {
+		if !rms[node.Id] {
+			nodes = append(nodes, node)
+		}
+	}
+
+	// remove from existing buckets
+	// for _, bucket := range l.buckets {
+	// 	bucket.Remove(removes...)
+	// }
+
+	// update for next
+	l.setNext(nodes)
 }
 
-// Set the next list of nodes from which to select
+// Set the next list of nodes from which to select.
 func (l *BucketList) SetNext(nodes []*InternalNode) {
-	k := int(l.K)
 
 	// copy nodes to prevent modifying the underlying array
 	localNodes := make([]*InternalNode, len(nodes))
 	copy(localNodes, nodes)
+
+	l.setNext(localNodes)
+}
+
+// Set the next list of nodes from which to select, modifying the underlying
+// array.
+func (l *BucketList) setNext(nodes []*InternalNode) {
+
+	// number of buckets
+	k := int(l.K)
 
 	// update number of buckets
 	buckets := l.buckets
@@ -65,10 +85,10 @@ func (l *BucketList) SetNext(nodes []*InternalNode) {
 	}
 
 	// sort nodes
-	l.Sort(localNodes, l.LocalNode)
+	l.Sort(nodes, l.LocalNode)
 
 	// populate buckets
-	unallocated := localNodes
+	unallocated := nodes
 	for i := k - 1; i > 0; i -= 1 {
 		q := 1 << uint(i)
 		d := (q << 1) - 1
@@ -84,7 +104,7 @@ func (l *BucketList) SetNext(nodes []*InternalNode) {
 	bucket.SetNext(unallocated)
 
 	// save changes
-	l.nodes = localNodes
+	l.nodes = nodes
 	l.buckets = buckets
 }
 
