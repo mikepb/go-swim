@@ -27,14 +27,13 @@ type Detector struct {
 	suspects    map[uint64]*InternalNode
 
 	// States for signaling the event loop.
-	state              int
-	started            bool
-	stopping           chan struct{}
-	stopped            chan struct{}
-	messages           chan *Message
-	activeListRequest  chan struct{}
-	activeListResponse chan []Node
-	joins              chan []string
+	state             int
+	started           bool
+	stopping          chan struct{}
+	stopped           chan struct{}
+	messages          chan *Message
+	activeListRequest chan chan []Node
+	joins             chan []string
 
 	// The local node identifies this instance of the failure detector. The
 	// node ID must be unique for all nodes. In addition, the node addresses
@@ -122,8 +121,7 @@ func (d *Detector) Start() {
 		d.stopping = make(chan struct{}, 1)
 		d.stopped = make(chan struct{}, 1)
 		d.messages = make(chan *Message, kBufferSize)
-		d.activeListRequest = make(chan struct{}, 1)
-		d.activeListResponse = make(chan []Node, 1)
+		d.activeListRequest = make(chan chan []Node, 1)
 		d.joins = make(chan []string, 1)
 
 		// create maps
@@ -267,8 +265,9 @@ func (d *Detector) BroadcastSync(event BroadcastEvent) {
 // Retrieve a list of member nodes that have not been marked as dead. The
 // returned list should not be modified.
 func (d *Detector) Members() []Node {
-	d.activeListRequest <- struct{}{}
-	return <-d.activeListResponse
+	ch := make(chan []Node)
+	d.activeListRequest <- ch
+	return <-ch
 }
 
 // Estimate the number of member nodes that have not been marked as dead,
@@ -320,8 +319,8 @@ func (d *Detector) loop() {
 			// set the timer for maybe sending indirect probes
 			timer.Reset(d.boundedTimeout(probedNodes))
 
-		case <-d.activeListRequest: // requests for the active list
-			d.sendActiveList()
+		case ch := <-d.activeListRequest: // requests for the active list
+			d.sendActiveList(ch)
 		}
 	}
 }
@@ -988,11 +987,11 @@ func (d *Detector) stateBroadcast(node *InternalNode) {
 }
 
 // Send the active list, caching when possible.
-func (d *Detector) sendActiveList() {
+func (d *Detector) sendActiveList(ch chan []Node) {
 
 	// send cached
-	if d.activeList != nil {
-		d.activeListResponse <- d.activeList
+	if d.activeList != nil || d.ActiveCount() == 0 {
+		ch <- d.activeList
 		return
 	}
 
@@ -1004,7 +1003,7 @@ func (d *Detector) sendActiveList() {
 	d.activeList = nodes
 
 	// send new list
-	d.activeListResponse <- nodes
+	ch <- nodes
 }
 
 func (d *Detector) boundedTimeout(nodes []*InternalNode) time.Duration {
