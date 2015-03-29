@@ -8,7 +8,7 @@ import (
 // bucket is at least twice as large as the next smaller bucket. The methods
 // are not safe to run concurrently.
 type BucketList struct {
-	K         int    // Number of buckets to maintain
+	K         uint   // Number of buckets to maintain
 	Sort      Sorter // Sorter implementation
 	LocalNode *Node
 
@@ -47,7 +47,7 @@ func (l *BucketList) Remove(removes ...*InternalNode) {
 
 // Set the next list of nodes from which to select
 func (l *BucketList) SetNext(nodes []*InternalNode) {
-	k := l.K
+	k := int(l.K)
 
 	// copy nodes to prevent modifying the underlying array
 	localNodes := make([]*InternalNode, len(nodes))
