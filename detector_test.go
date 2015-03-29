@@ -113,7 +113,11 @@ func TestDetector(t *testing.T) {
 
 	// leave
 	n2.Leave()
+RETRY_LEAVE:
 	if u := <-n1.UpdateCh; u.State != Dead {
+		if u.State == Alive {
+			goto RETRY_LEAVE
+		}
 		t.Fatalf("N1 did not consider N2 dead %v", u)
 	}
 

@@ -225,10 +225,6 @@ func (d *Detector) Join(addrs ...string) {
 // already stopped.
 func (d *Detector) Leave() {
 
-	if d.started {
-		d.Stop()
-	}
-
 	// we're dead
 	d.LocalNode.Incarnation.Witness(d.incarnation.Increment())
 	d.LocalNode.State = Dead
@@ -237,8 +233,13 @@ func (d *Detector) Leave() {
 	event := d.deathNode(&d.LocalNode)
 	d.Broadcast(event)
 
+	// stop if running
+	if d.started {
+		d.Stop()
+	}
+
 	// prepare death message
-	msg := new(Message)
+	msg := &Message{From: d.LocalNode.Id}
 	msg.AddEvent(event)
 
 	// send the death broadcast
@@ -355,12 +356,11 @@ func (d *Detector) probe() (nodes []*InternalNode) {
 
 	// send the probes
 	for i, j := 0, 0; i < max && j < probes; i += 1 {
-		if node := d.nodes.Next(); node != nil && len(node.Addrs) > 0 {
-			if node.State == Alive || node.State == Suspect {
-				d.sendTo(node, d.ping())
-				nodes = append(nodes, node)
-				j += 1
-			}
+		node := d.nodes.Next()
+		if node != nil && node.State != Dead && len(node.Addrs) > 0 {
+			d.sendTo(node, d.ping())
+			nodes = append(nodes, node)
+			j += 1
 		}
 	}
 
@@ -433,8 +433,8 @@ func (d *Detector) suspected(periodStartTime time.Time, nodes []*InternalNode) {
 		}
 
 		// if none of these cases match
-		if !node.LastAckTime.IsZero() {
-			if node.LastAckTime.After(deathTime) {
+		if !node.LastSeenTime.IsZero() {
+			if node.LastSeenTime.After(deathTime) {
 				continue
 			}
 		} else if !node.LastSentTime.IsZero() {
@@ -443,7 +443,6 @@ func (d *Detector) suspected(periodStartTime time.Time, nodes []*InternalNode) {
 			}
 		} else {
 			// some other node suspects
-			node.LastSentTime = time.Now()
 			continue
 		}
 
@@ -490,6 +489,10 @@ func (d *Detector) handle(lastTick time.Time, msg *Message) {
 		return
 	}
 
+	// record last received time
+	node := d.lookup(msg.From, nil)
+	node.LastSeenTime = time.Now()
+
 	// anti-entropy
 	events := msg.Events()
 	if msg.To == d.LocalNode.Id {
@@ -502,7 +505,6 @@ func (d *Detector) handle(lastTick time.Time, msg *Message) {
 			}
 		}
 
-		node := d.lookup(msg.From, nil)
 		node.RemoteIncarnation = msg.Incarnation
 
 		// maybe dispute local state
@@ -581,11 +583,6 @@ func (d *Detector) handlePing(event *PingEvent) {
 
 	// acknowledge the ping
 	d.sendTo(node, d.ack(event.Time))
-
-	// if the node is not alive, the state is suspect
-	if node.State == Alive && node.State != Suspect {
-		d.stateUpdate(node, Suspect, false)
-	}
 }
 
 // Handle indirect ping requests.
@@ -634,20 +631,20 @@ func (d *Detector) handleAck(lastTick time.Time, event *AckEvent) {
 	// check the timestamp
 	if lastTick.IsZero() || node.LastAckTime.IsZero() {
 		// no-op
+	} else if node.LastAckTime.After(lastTick) {
+		// node already acknowledged
+		return
 	} else if event.Time.IsZero() || event.Time.Before(lastTick) {
 		// ignore if invalid time or very late response
 		return
-	} else if event.Time.Before(node.LastAckTime) {
-		// node already acknowledged before now
-		return
 	}
-
-	// set last ack time
-	node.LastAckTime = time.Now()
 
 	// update RTT; this extends the RTT in the case of an indirect ack to
 	// reduce the likelihood of future false negatives from slow nodes
 	node.RTT.Update(time.Since(event.Time))
+
+	// set last ack time
+	node.LastAckTime = time.Now()
 
 	// send alive message if node isn't marked as alive
 	if node.State != Alive {
@@ -757,7 +754,7 @@ func (d *Detector) handleStateBroadcast(event BroadcastEvent, id uint64, incarna
 	} else if cmp > 0 {
 
 		// we have an update to broadcast
-		d.stateUpdate(node, state, true)
+		d.stateUpdate(node, state, false)
 
 	}
 }
@@ -1042,7 +1039,7 @@ func (d *Detector) SuspicionDuration() time.Duration {
 	if i < 1 {
 		i = 1
 	}
-	return (time.Duration(d.SuspicionMult) * time.Duration(i) * d.ProbeInterval)
+	return time.Duration(d.SuspicionMult) * time.Duration(i) * d.ProbeInterval
 }
 
 // Calculate the retransmission limit for broadcasts.

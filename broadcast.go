@@ -23,6 +23,11 @@ func (b *Broadcast) Priority() uint {
 
 // Determine if this broadcast invalidates that broadcast.
 func (b *Broadcast) Invalidates(that *Broadcast) bool {
-	return b.Event.Tag() == that.Event.Tag() &&
-		that.Event.Seq().Compare(b.Event.Seq().Get()) < 0
+	ltag := b.Event.Tag()
+	rtag := that.Event.Tag()
+	if ltag != rtag {
+		return false
+	}
+	cmp := that.Event.Seq().Compare(b.Event.Seq().Get())
+	return cmp < 0 || cmp == 0 && b.Event.Source() == ltag.Id
 }
