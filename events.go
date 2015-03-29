@@ -94,8 +94,8 @@ func (e AntiEntropyEvent) String() string {
 
 // Broadcast tags are used to efficiently invalidate existing broadcasts.
 type BroadcastTag struct {
-	Id    uint64
-	State State
+	Id      uint64
+	IsState bool
 }
 
 // A broadcast event exposes the sequence and tag methods.
@@ -124,7 +124,7 @@ func (e *AliveEvent) Source() uint64 {
 
 // Get the tag for the alive event.
 func (e *AliveEvent) Tag() BroadcastTag {
-	return BroadcastTag{e.Id, Alive}
+	return BroadcastTag{e.Id, true}
 }
 
 // Get the sequence for the alive event.
@@ -153,7 +153,7 @@ func (e *SuspectEvent) Source() uint64 {
 
 // Get the tag for the suspect event.
 func (e *SuspectEvent) Tag() BroadcastTag {
-	return BroadcastTag{e.Id, Suspect}
+	return BroadcastTag{e.Id, true}
 }
 
 // Get the sequence for the suspect event.
@@ -182,7 +182,7 @@ func (e *DeathEvent) Source() uint64 {
 
 // Get the tag for the death event.
 func (e *DeathEvent) Tag() BroadcastTag {
-	return BroadcastTag{e.Id, Dead}
+	return BroadcastTag{e.Id, true}
 }
 
 // Get the sequence for the death event.
@@ -212,7 +212,7 @@ func (e *UserEvent) Source() uint64 {
 
 // Get the tag for the user event.
 func (e *UserEvent) Tag() BroadcastTag {
-	return BroadcastTag{uint64(e.Incarnation), 0}
+	return BroadcastTag{uint64(e.Incarnation), false}
 }
 
 // Get the sequence for the user event.
