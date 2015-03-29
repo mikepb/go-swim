@@ -335,17 +335,16 @@ func (d *Detector) probe() (nodes []*InternalNode) {
 	}
 
 	// maximum number of probes
-	max := d.ActiveCount()
-	if int(d.DirectProbes) < max {
-		max = int(d.DirectProbes)
-	}
+	max := d.nodes.Len()
+	probes := int(d.DirectProbes)
 
 	// send the probes
-	for i := 0; i < max; i += 1 {
-		if node := d.nodes.Next(); node != nil {
+	for i, j := 0, 0; i < max && j < probes; i += 1 {
+		if node := d.nodes.Next(); node != nil && len(node.Addrs) > 0 {
 			if node.State == Alive || node.State == Suspect {
 				d.sendTo(node, d.ping())
 				nodes = append(nodes, node)
+				j += 1
 			}
 		}
 	}
@@ -468,7 +467,17 @@ func (d *Detector) handle(lastTick time.Time, msg *Message) {
 	}
 
 	// anti-entropy
+	events := msg.Events()
 	if msg.To == d.LocalNode.Id {
+
+		// process anti-entropy event
+		if len(events) > 0 {
+			if event, ok := events[0].(*AntiEntropyEvent); ok {
+				d.handleEvent(lastTick, event)
+				events = events[1:]
+			}
+		}
+
 		node := d.lookup(msg.From, nil)
 		node.RemoteIncarnation = msg.Incarnation
 
@@ -479,7 +488,7 @@ func (d *Detector) handle(lastTick time.Time, msg *Message) {
 	}
 
 	// queue events
-	for _, event := range msg.Events() {
+	for _, event := range events {
 		d.handleEvent(lastTick, event)
 	}
 
@@ -721,9 +730,6 @@ func (d *Detector) handleStateBroadcast(event BroadcastEvent, id uint64, incarna
 
 	} else if cmp > 0 {
 
-		// update incarnation number
-		node.Incarnation.Witness(d.incarnation.Increment())
-
 		// we have an update to broadcast
 		d.stateUpdate(node, state, true)
 
@@ -836,9 +842,9 @@ func (d *Detector) antiEntropy() *AntiEntropyEvent {
 func (d *Detector) sendTo(node *InternalNode, events ...interface{}) {
 
 	// can't send if there are no addresses
-	if node.Addrs == nil {
+	if len(node.Addrs) == 0 {
 		if d.Logger != nil {
-			d.Logger.Printf("[send] Can't send to node %v with no addresses!", node.Id)
+			d.Logger.Printf("[send %v] Can't send to node %v with no addresses! %v", d.LocalNode.Id, node.Id, events)
 		}
 		return
 	}
@@ -886,11 +892,21 @@ func (d *Detector) lookup(id uint64, addrs []string) *InternalNode {
 			},
 		}
 
-		// save node
-		d.nodeMap[id] = node
-
 		// hint RTT
 		node.RTT.Hint(d.ProbeTimeout)
+
+		// anti-entropy broadcasts
+		for id := range d.actives {
+			d.stateBroadcast(d.nodeMap[id])
+		}
+
+		// save node
+		d.nodeMap[id] = node
+	}
+
+	// populate addresses
+	if len(node.Addrs) == 0 {
+		node.Addrs = addrs
 	}
 
 	// return the singleton
@@ -951,18 +967,23 @@ func (d *Detector) stateUpdate(node *InternalNode, state State, reincarnate bool
 	}
 
 	// broadcast change in state
-	switch state {
+	d.stateBroadcast(node)
+
+	// notify update
+	if d.UpdateCh != nil {
+		defer func() { d.UpdateCh <- node.Node }()
+	}
+}
+
+// Broadcast the current state of the given node.
+func (d *Detector) stateBroadcast(node *InternalNode) {
+	switch node.State {
 	case Alive:
 		d.Broadcast(d.alive(node))
 	case Suspect:
 		d.Broadcast(d.suspect(node))
 	case Dead:
 		d.Broadcast(d.death(node))
-	}
-
-	// notify update
-	if d.UpdateCh != nil {
-		defer func() { d.UpdateCh <- node.Node }()
 	}
 }
 
