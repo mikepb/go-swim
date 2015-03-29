@@ -199,9 +199,13 @@ func (d *Detector) Join(addrs ...string) {
 
 func (d *Detector) sendJoinIntent(addrs []string) {
 
+	// broadcast death event to invalidate old broadcasts
+	event := d.aliveNode(&d.LocalNode)
+	d.Broadcast(event)
+
 	// create the message
 	msg := new(Message)
-	msg.AddEvent(d.aliveNode(&d.LocalNode))
+	msg.AddEvent(event)
 
 	// don't send to self
 	ignore := make(map[string]bool)
@@ -230,9 +234,13 @@ func (d *Detector) Leave() {
 	d.LocalNode.Incarnation.Witness(d.incarnation.Increment())
 	d.LocalNode.State = Dead
 
+	// broadcast death event to invalidate old broadcasts
+	event := d.deathNode(&d.LocalNode)
+	d.Broadcast(event)
+
 	// prepare death message
 	msg := new(Message)
-	msg.AddEvent(d.deathNode(&d.LocalNode))
+	msg.AddEvent(event)
 
 	// send the death broadcast
 	nodes := d.nodes.List()
@@ -686,8 +694,8 @@ func (d *Detector) handleStateBroadcast(event BroadcastEvent, id uint64, incarna
 	if id == d.LocalNode.Id {
 		cmp := d.LocalNode.Incarnation.Compare(incarnation)
 		// if our incarnation number is less than the state broadcast or
-		// if our incarnation number is the same but we're not the source
-		if cmp < 0 || cmp == 0 && event.Source() != d.LocalNode.Id {
+		// if our incarnation number is the same but the state isn't alive
+		if cmp < 0 || state != Alive {
 			// then we dispute the update
 			d.LocalNode.Incarnation.Witness(d.incarnation.Increment())
 			d.Broadcast(d.aliveNode(&d.LocalNode))
@@ -925,6 +933,13 @@ func (d *Detector) stateUpdate(node *InternalNode, state State, reincarnate bool
 	default: // unknown state
 		return
 
+	}
+
+	// remove from suspects list
+	if node.State != Suspect {
+		if _, ok := d.suspects[node.Id]; ok {
+			delete(d.suspects, node.Id)
+		}
 	}
 
 	// update active count
