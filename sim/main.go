@@ -1,40 +1,70 @@
 package main
 
 import (
-	// "flag"
 	"fmt"
 	"log"
+	"math"
 	"math/rand"
 	"os"
 	"runtime"
+	"runtime/debug"
 	"time"
 
 	. ".."
 )
 
 func main() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Println(r)
+			debug.PrintStack()
+		}
+	}()
 
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	startTime := time.Now()
+	stepTime := time.Now()
 
 	codec := &LZ4Codec{new(GobCodec)}
 	router := NewSimRouter()
+	// router.NetDelay = 0
+	// router.NetStdDev = 0
 	nodes := []*Detector{}
 	names := make(map[uint64]string)
 
+	counts := make(map[uint64]int)
+	stat := func() (float64, float64) {
+		sum := float64(0)
+		ss := float64(0)
+		for _, c := range counts {
+			sum += float64(c)
+			ss += float64(c) * float64(c)
+		}
+		n := float64(len(counts))
+		mean := sum / n
+		var2 := (n*ss - sum*sum) / (n * (n - 1))
+		stddev := math.Sqrt(var2)
+		return mean, stddev
+	}
+
 	watch := func(name string, d *Detector) chan Node {
 		ch := make(chan Node, 1)
-		l := log.New(os.Stdout, name+",", log.Lmicroseconds)
+		l := log.New(os.Stdout, name, 0)
 		go func() {
 			for {
-				<-ch
 				// event := <-ch
 				// ns := ""
 				// for _, node := range d.Members() {
 				// 	ns = ns + " " + names[node.Id]
 				// }
 				// l.Printf(",%d,%d,%v,%s,%v", d.ActiveCount(), d.RetransmitLimit(), d.SuspicionDuration(), ns, event)
-				l.Printf(",%d,%v", d.ActiveCount(), time.Since(startTime))
+				<-ch
+				t := time.Since(startTime)
+				s := time.Since(stepTime)
+				count := d.ActiveCount()
+				counts[d.LocalNode.Id] = count
+				mean, stddev := stat()
+				l.Printf(",%d,%f,%f,%v,%v", count, mean, stddev, t, s)
 			}
 		}()
 		return ch
@@ -73,14 +103,14 @@ func main() {
 				DirectProbes:   1,
 				IndirectProbes: 3,
 				ProbeInterval:  200 * time.Millisecond,
-				ProbeTimeout:   10 * time.Millisecond,
+				ProbeTimeout:   20 * time.Millisecond,
 				RetransmitMult: 4,
 				SuspicionMult:  3,
 				Transport:      router.NewTransport(name),
 				Codec:          codec,
 				SelectionList:  new(ShuffleList),
-				Logger:         log.New(os.Stderr, "", 0),
 			}
+			// d.Logger = log.New(os.Stderr, "", 0)
 			d.UpdateCh = watch(name, d)
 			d.MessageCh = watchMsg(name, d)
 			nodes = append(nodes, d)
@@ -90,8 +120,10 @@ func main() {
 
 	start := func() {
 		startTime = time.Now()
+		stepTime = startTime
 		for _, node := range nodes {
 			node.Join(nodes[0].LocalNode.Addrs[0])
+			time.Sleep(500 * time.Millisecond)
 		}
 	}
 
@@ -101,12 +133,26 @@ func main() {
 		}
 	}
 
-	for i := 0; i < 10; i += 1 {
+	kill := func() {
+		node := nodes[0]
+		node.Close()
+		delete(counts, node.LocalNode.Id)
+		nodes = nodes[1:]
+	}
+
+	n := 100
+
+	for i := 0; i < n; i += 1 {
 		node()
 	}
 
 	start()
 	defer close()
 
-	time.Sleep(5 * time.Second)
+	time.Sleep(time.Duration(n) * 500 * time.Millisecond)
+
+	stepTime = time.Now()
+	kill()
+
+	time.Sleep(time.Duration(n) * 500 * time.Millisecond)
 }

@@ -433,8 +433,8 @@ func (d *Detector) suspected(periodStartTime time.Time, nodes []*InternalNode) {
 		}
 
 		// if none of these cases match
-		if !node.LastSeenTime.IsZero() {
-			if node.LastSeenTime.After(deathTime) {
+		if !node.LastAckTime.IsZero() {
+			if node.LastAckTime.After(deathTime) {
 				continue
 			}
 		} else if !node.LastSentTime.IsZero() {

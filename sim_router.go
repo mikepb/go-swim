@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-const kNetDelay = 5 * time.Millisecond
+const kNetDelay = 2 * time.Millisecond
 const kNetStdDev = kNetDelay / 10
 const kMaxMessageLen = 512
 
@@ -45,10 +45,8 @@ func (r *SimRouter) NewTransport(addr string) *SimTransport {
 
 // Send a message to the first transport matching the addresses.
 func (r *SimRouter) SendTo(addrs []string, message *CodedMessage) error {
-	defer runtime.Gosched()
 
-	// delay the packet to simulate a "real" network
-	time.AfterFunc(r.Delay(), func() {
+	deliver := func() {
 		defer func() { recover() }()
 		for _, addr := range addrs {
 			if t, ok := r.Routes[addr]; ok {
@@ -56,7 +54,20 @@ func (r *SimRouter) SendTo(addrs []string, message *CodedMessage) error {
 				return
 			}
 		}
-	})
+	}
+
+	delay := r.Delay()
+
+	// support no delay
+	if delay == 0 {
+		deliver()
+		return nil
+	}
+
+	defer runtime.Gosched()
+
+	// delay the packet to simulate a "real" network
+	time.AfterFunc(delay, deliver)
 
 	// silently fail to simulate UDP
 	return nil
@@ -65,5 +76,9 @@ func (r *SimRouter) SendTo(addrs []string, message *CodedMessage) error {
 // Generate a normally distributed time delay with a mean of NetDelay and
 // standard deviation of NetStdDev.
 func (r *SimRouter) Delay() time.Duration {
-	return time.Duration(r.Rand.NormFloat64()*float64(r.NetStdDev)) + r.NetDelay
+	d := time.Duration(r.Rand.NormFloat64()*float64(r.NetStdDev)) + r.NetDelay
+	if d < 0 {
+		return 0
+	}
+	return d
 }
