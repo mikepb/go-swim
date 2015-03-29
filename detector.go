@@ -225,6 +225,11 @@ func (d *Detector) Join(addrs ...string) {
 // already stopped.
 func (d *Detector) Leave() {
 
+	// stop if running
+	if d.started {
+		d.Stop()
+	}
+
 	// we're dead
 	d.LocalNode.Incarnation.Witness(d.incarnation.Increment())
 	d.LocalNode.State = Dead
@@ -232,11 +237,6 @@ func (d *Detector) Leave() {
 	// broadcast death event to invalidate old broadcasts
 	event := d.deathNode(&d.LocalNode)
 	d.Broadcast(event)
-
-	// stop if running
-	if d.started {
-		d.Stop()
-	}
 
 	// prepare death message
 	msg := &Message{From: d.LocalNode.Id}
@@ -489,10 +489,6 @@ func (d *Detector) handle(lastTick time.Time, msg *Message) {
 		return
 	}
 
-	// record last received time
-	node := d.lookup(msg.From, nil)
-	node.LastSeenTime = time.Now()
-
 	// anti-entropy
 	events := msg.Events()
 	if msg.To == d.LocalNode.Id {
@@ -505,6 +501,7 @@ func (d *Detector) handle(lastTick time.Time, msg *Message) {
 			}
 		}
 
+		node := d.lookup(msg.From, nil)
 		node.RemoteIncarnation = msg.Incarnation
 
 		// maybe dispute local state

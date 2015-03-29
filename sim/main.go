@@ -7,21 +7,17 @@ import (
 	"math/rand"
 	"os"
 	"runtime"
-	"runtime/debug"
+	"sync"
 	"time"
 
 	. ".."
 )
 
 func main() {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Println(r)
-			debug.PrintStack()
-		}
-	}()
-
 	runtime.GOMAXPROCS(runtime.NumCPU())
+
+	var lock sync.Mutex
+
 	startTime := time.Now()
 	stepTime := time.Now()
 
@@ -59,11 +55,13 @@ func main() {
 				// }
 				// l.Printf(",%d,%d,%v,%s,%v", d.ActiveCount(), d.RetransmitLimit(), d.SuspicionDuration(), ns, event)
 				<-ch
+				lock.Lock()
 				t := time.Since(startTime)
 				s := time.Since(stepTime)
 				count := d.ActiveCount()
 				counts[d.LocalNode.Id] = count
 				mean, stddev := stat()
+				lock.Unlock()
 				l.Printf(",%d,%f,%f,%v,%v", count, mean, stddev, t, s)
 			}
 		}()
@@ -119,28 +117,51 @@ func main() {
 	}
 
 	start := func() {
+		lock.Lock()
+		defer lock.Unlock()
+
 		startTime = time.Now()
 		stepTime = startTime
+
+		if len(nodes) == 0 {
+			panic("No nodes configured!")
+		}
+		n1 := nodes[0]
+		addrs := n1.LocalNode.Addrs
+
+		if len(addrs) == 0 {
+			panic("No addresses configured!")
+		}
+
 		for _, node := range nodes {
-			node.Join(nodes[0].LocalNode.Addrs[0])
+			node.Join(addrs...)
+			lock.Unlock()
 			time.Sleep(500 * time.Millisecond)
+			lock.Lock()
 		}
 	}
 
 	close := func() {
+		lock.Lock()
+		defer lock.Unlock()
 		for _, node := range nodes {
 			node.Close()
 		}
 	}
 
 	kill := func() {
+		lock.Lock()
+		defer lock.Unlock()
+		if len(nodes) == 0 {
+			panic("No nodes configured!")
+		}
 		node := nodes[0]
 		node.Close()
 		delete(counts, node.LocalNode.Id)
 		nodes = nodes[1:]
 	}
 
-	n := 100
+	n := 64
 
 	for i := 0; i < n; i += 1 {
 		node()
@@ -149,10 +170,13 @@ func main() {
 	start()
 	defer close()
 
-	time.Sleep(time.Duration(n) * 500 * time.Millisecond)
+	time.Sleep(time.Duration(n) * 250 * time.Millisecond)
 
+	lock.Lock()
 	stepTime = time.Now()
+	lock.Unlock()
+
 	kill()
 
-	time.Sleep(time.Duration(n) * 500 * time.Millisecond)
+	time.Sleep(time.Duration(n) * 250 * time.Millisecond)
 }

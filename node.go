@@ -28,7 +28,6 @@ type InternalNode struct {
 	RTT               RTT       // Round-trip time estimator
 	RemoteIncarnation Seq       // Incarnation number of the local node at this node
 	LastAckTime       time.Time // Last time the node acknowledged a ping
-	LastSeenTime      time.Time // Last time a message was received
 	LastSentTime      time.Time // Last time a message was sent
 
 	Node
