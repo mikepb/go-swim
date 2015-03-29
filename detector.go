@@ -2,6 +2,7 @@ package swim
 
 import (
 	"log"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -27,13 +28,15 @@ type Detector struct {
 	suspects    map[uint64]*InternalNode
 
 	// States for signaling the event loop.
-	state             int
-	started           bool
-	stopping          chan struct{}
-	stopped           chan struct{}
-	messages          chan *Message
-	activeListRequest chan chan []Node
-	joins             chan []string
+	state    int
+	started  bool
+	stopping chan struct{}
+	stopped  chan struct{}
+	messages chan *Message
+	joins    chan []string
+
+	// Concurrency control.
+	l sync.Mutex
 
 	// The local node identifies this instance of the failure detector. The
 	// node ID must be unique for all nodes. In addition, the node addresses
@@ -121,7 +124,6 @@ func (d *Detector) Start() {
 		d.stopping = make(chan struct{}, 1)
 		d.stopped = make(chan struct{}, 1)
 		d.messages = make(chan *Message, kBufferSize)
-		d.activeListRequest = make(chan chan []Node, 1)
 		d.joins = make(chan []string, 1)
 
 		// create maps
@@ -191,14 +193,13 @@ func (d *Detector) Join(addrs ...string) {
 		d.Start()
 	}
 
-	// request to send join events
-	d.joins <- addrs
-}
-
-func (d *Detector) sendJoinIntent(addrs []string) {
+	// create alive event
+	d.l.Lock()
+	event := d.aliveNode(&d.LocalNode)
+	localAddrs := d.LocalNode.Addrs
+	d.l.Unlock()
 
 	// broadcast death event to invalidate old broadcasts
-	event := d.aliveNode(&d.LocalNode)
 	d.Broadcast(event)
 
 	// create the message
@@ -207,7 +208,7 @@ func (d *Detector) sendJoinIntent(addrs []string) {
 
 	// don't send to self
 	ignore := make(map[string]bool)
-	for _, addr := range d.LocalNode.Addrs {
+	for _, addr := range localAddrs {
 		ignore[addr] = true
 	}
 
@@ -265,9 +266,22 @@ func (d *Detector) BroadcastSync(event BroadcastEvent) {
 // Retrieve a list of member nodes that have not been marked as dead. The
 // returned list should not be modified.
 func (d *Detector) Members() []Node {
-	ch := make(chan []Node)
-	d.activeListRequest <- ch
-	return <-ch
+	d.l.Lock()
+	defer d.l.Unlock()
+
+	// send cached
+	if d.activeList != nil || d.ActiveCount() == 0 {
+		return d.activeList
+	}
+
+	// make new list
+	nodes := make([]Node, 0, d.ActiveCount())
+	for id := range d.actives {
+		nodes = append(nodes, d.nodeMap[id].Node)
+	}
+	d.activeList = nodes
+
+	return nodes
 }
 
 // Estimate the number of member nodes that have not been marked as dead,
@@ -294,33 +308,35 @@ func (d *Detector) loop() {
 			d.stopped <- struct{}{}
 			return
 
-		case addrs := <-d.joins: // handle joins
-			d.sendJoinIntent(addrs)
-
 		case msg := <-d.messages: // handle messages
+			d.l.Lock()
 			d.handle(periodStartTime, msg)
+			d.l.Unlock()
 
 		case <-timer.C: // probe timeout
 			if !periodStartTime.IsZero() && probedNodes != nil {
+				d.l.Lock()
 				d.indirectProbe(periodStartTime, probedNodes)
+				d.l.Unlock()
 			}
 
 		case t := <-ticker.C: // protocol period
 
 			// handle suspicion from the previous protocol period
 			if !periodStartTime.IsZero() && probedNodes != nil {
+				d.l.Lock()
 				d.suspected(periodStartTime, probedNodes)
+				d.l.Unlock()
 			}
 			periodStartTime = t
 
 			// send out the probes
+			d.l.Lock()
 			probedNodes = d.probe()
+			d.l.Unlock()
 
 			// set the timer for maybe sending indirect probes
 			timer.Reset(d.boundedTimeout(probedNodes))
-
-		case ch := <-d.activeListRequest: // requests for the active list
-			d.sendActiveList(ch)
 		}
 	}
 }
@@ -409,23 +425,32 @@ func (d *Detector) suspected(periodStartTime time.Time, nodes []*InternalNode) {
 
 	// determine which nodes have died
 	for id, node := range d.suspects {
+
+		// if the node is not suspect, then it's alive or dead (as a cat)
 		if node.State != Suspect {
-
-			// if the node is not suspect, then it's alive or dead (as a cat)
 			delete(d.suspects, id)
-
-		} else if !node.LastAckTime.IsZero() && node.LastAckTime.Before(deathTime) ||
-			!node.LastSentTime.IsZero() && node.LastSentTime.Before(deathTime) {
-
-			// the node is dead if it hasn't disputed its suspicion
-			d.stateUpdate(node, Dead, true)
-			delete(d.suspects, id)
-
-		} else {
-
-			// otherwise, the node is still suspect
-
+			continue
 		}
+
+		// if none of these cases match
+		if !node.LastAckTime.IsZero() {
+			if node.LastAckTime.After(deathTime) {
+				continue
+			}
+		} else if !node.LastSentTime.IsZero() {
+			if node.LastSentTime.After(deathTime) {
+				continue
+			}
+		} else {
+			// some other node suspects
+			node.LastSentTime = time.Now()
+			continue
+		}
+
+		// the node is dead if it hasn't disputed its suspicion
+		d.stateUpdate(node, Dead, true)
+		delete(d.suspects, id)
+
 	}
 }
 
@@ -493,7 +518,9 @@ func (d *Detector) handle(lastTick time.Time, msg *Message) {
 
 	// trigger message update
 	if d.MessageCh != nil {
+		d.l.Unlock()
 		d.MessageCh <- *msg
+		d.l.Lock()
 	}
 }
 
@@ -970,7 +997,9 @@ func (d *Detector) stateUpdate(node *InternalNode, state State, reincarnate bool
 
 	// notify update
 	if d.UpdateCh != nil {
-		defer func() { d.UpdateCh <- node.Node }()
+		d.l.Unlock()
+		d.UpdateCh <- node.Node
+		d.l.Lock()
 	}
 }
 
@@ -984,26 +1013,6 @@ func (d *Detector) stateBroadcast(node *InternalNode) {
 	case Dead:
 		d.Broadcast(d.death(node))
 	}
-}
-
-// Send the active list, caching when possible.
-func (d *Detector) sendActiveList(ch chan []Node) {
-
-	// send cached
-	if d.activeList != nil || d.ActiveCount() == 0 {
-		ch <- d.activeList
-		return
-	}
-
-	// make new list
-	nodes := make([]Node, 0, d.ActiveCount())
-	for id := range d.actives {
-		nodes = append(nodes, d.nodeMap[id].Node)
-	}
-	d.activeList = nodes
-
-	// send new list
-	ch <- nodes
 }
 
 func (d *Detector) boundedTimeout(nodes []*InternalNode) time.Duration {
