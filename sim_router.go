@@ -2,11 +2,12 @@ package swim
 
 import (
 	"math/rand"
+	"runtime"
 	"time"
 )
 
 const kNetDelay = 5 * time.Millisecond
-const kNetStdDev = 1 * time.Millisecond
+const kNetStdDev = kNetDelay / 10
 const kMaxMessageLen = 512
 
 // SimRouter routes messages between SimTransports for the network
@@ -44,6 +45,7 @@ func (r *SimRouter) NewTransport(addr string) *SimTransport {
 
 // Send a message to the first transport matching the addresses.
 func (r *SimRouter) SendTo(addrs []string, message *CodedMessage) error {
+	defer runtime.Gosched()
 
 	// delay the packet to simulate a "real" network
 	time.AfterFunc(r.Delay(), func() {
