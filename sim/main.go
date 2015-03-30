@@ -21,7 +21,7 @@ var P *uint = flag.Uint("p", 1, "number of direct probes")
 var D *string = flag.String("d", "ring", "distance D")
 
 func main() {
-	runtime.GOMAXPROCS(runtime.NumCPU())
+	// runtime.GOMAXPROCS(runtime.NumCPU())
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGINFO)

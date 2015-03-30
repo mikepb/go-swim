@@ -179,7 +179,7 @@ func (r *SimConvergenceRunner) Measure(n uint) (first, last time.Duration) {
 
 	// ensure we reach steady state
 	for _, d := range r.instances {
-		time.Sleep(2 * d.SuspicionDuration())
+		time.Sleep(d.SuspicionDuration())
 		break
 	}
 
