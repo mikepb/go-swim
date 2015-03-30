@@ -349,10 +349,17 @@ func (d *Detector) probe() (nodes []*InternalNode) {
 	// send the probes
 	for i, j := 0, 0; i < max && j < probes; i += 1 {
 		node := d.nodes.Next()
-		if node != nil && node.State != Dead && len(node.Addrs) > 0 {
-			d.sendTo(node, d.ping())
+		if node == nil {
+			// no-op
+		} else if node.State == Dead {
+			d.stateUpdate(node, Dead, false)
+		} else {
+			if len(node.Addrs) > 0 {
+				d.sendTo(node, d.ping())
+				j += 1
+			}
+			// append to send indirect request
 			nodes = append(nodes, node)
-			j += 1
 		}
 	}
 
@@ -368,7 +375,8 @@ func (d *Detector) indirectProbe(nodes []*InternalNode) {
 	// batch requests for the indirect probes
 	requests := []interface{}{}
 	for _, node := range nodes {
-		if node.LastAckTime.IsZero() || node.LastAckTime.Before(d.period) {
+		if node.LastAckTime.IsZero() || node.LastAckTime.Before(d.period) ||
+			len(node.Addrs) == 0 {
 			requests = append(requests, d.pingRequest(node))
 			flags[node.Id] = true
 		}
@@ -591,11 +599,13 @@ func (d *Detector) handleIndirectPingRequest(event *IndirectPingRequestEvent) {
 
 	// special case for dead nodes
 	if target.State == Dead {
-		// notify that node is dead
 		d.sendTo(from, d.death(target))
-		// someone didn't get the message, so re-gossip the news
-		d.stateBroadcast(target)
 		return
+	}
+
+	// anti-entropy
+	if len(event.TargetAddrs) == 0 {
+		d.sendTo(from, d.antiEntropy(&target.Node))
 	}
 
 	// send indirect ping
@@ -856,9 +866,9 @@ func (d *Detector) deathNode(node *Node) *DeathEvent {
 }
 
 // Send an anti-entropy event.
-func (d *Detector) antiEntropy() *AntiEntropyEvent {
+func (d *Detector) antiEntropy(node *Node) *AntiEntropyEvent {
 	return &AntiEntropyEvent{
-		Node: d.LocalNode,
+		Node: *node,
 	}
 }
 
@@ -881,7 +891,7 @@ func (d *Detector) sendTo(node *InternalNode, events ...interface{}) {
 
 	// add anti-entropy first, if needed, to be processed first at remote node
 	if i := d.LocalNode.Incarnation.Get(); node.RemoteIncarnation.Compare(i) < 0 {
-		msg.AddEvent(d.antiEntropy())
+		msg.AddEvent(d.antiEntropy(&d.LocalNode))
 		node.RemoteIncarnation.Witness(i)
 	}
 
