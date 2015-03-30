@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const kNetDelay = 10 * time.Millisecond
+const kNetDelay = 5 * time.Millisecond
 const kNetStdDev = kNetDelay / 10
 const kMaxMessageLen = 512
 
@@ -61,7 +61,7 @@ func (r *SimRouter) SendTo(addrs []string, message *CodedMessage) error {
 
 	// support no delay
 	if delay == 0 {
-		deliver()
+		go deliver()
 		return nil
 	}
 

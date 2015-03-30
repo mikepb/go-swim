@@ -414,7 +414,6 @@ func (d *Detector) suspected(nodes []*InternalNode) {
 	for _, node := range nodes {
 		if node.LastAckTime.IsZero() || node.LastAckTime.Before(d.period) {
 			if node.State != Suspect {
-				node.SuspectTime = d.period
 				d.stateUpdate(node, Suspect, true)
 			}
 		}
@@ -955,9 +954,6 @@ func (d *Detector) lookup(id uint64, addrs []string) *InternalNode {
 // Consolidate node state updates.
 func (d *Detector) stateUpdate(node *InternalNode, state State, reincarnate bool) {
 
-	// update node state
-	node.State = state
-
 	// special handling
 	switch state {
 
@@ -965,6 +961,9 @@ func (d *Detector) stateUpdate(node *InternalNode, state State, reincarnate bool
 
 		// save into global suspect list
 		d.suspects[node.Id] = node
+		if node.State != Suspect {
+			node.SuspectTime = d.period
+		}
 		fallthrough
 
 	case Alive:
@@ -989,6 +988,9 @@ func (d *Detector) stateUpdate(node *InternalNode, state State, reincarnate bool
 		return
 
 	}
+
+	// update node state
+	node.State = state
 
 	// remove from suspects list
 	if state != Suspect {

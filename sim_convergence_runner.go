@@ -79,12 +79,12 @@ func (r *SimConvergenceRunner) newDetector() *Detector {
 				Id:    id,
 				Addrs: []string{addr},
 			},
-			DirectProbes:   2,
+			DirectProbes:   r.P,
 			IndirectProbes: 3,
 			ProbeInterval:  200 * time.Millisecond,
-			ProbeTimeout:   20 * time.Millisecond,
+			ProbeTimeout:   50 * time.Millisecond,
 			RetransmitMult: 4,
-			SuspicionMult:  3,
+			SuspicionMult:  5,
 			Transport:      r.router.NewTransport(addr),
 			Codec:          &LZ4Codec{new(GobCodec)},
 		}
@@ -207,23 +207,12 @@ func (r *SimConvergenceRunner) Measure(n uint) (first, last time.Duration) {
 }
 
 func (r *SimConvergenceRunner) start() {
-	// n := len(r.instances)
 
-	// r.router.NetDelay = 0
-	// r.router.NetStdDev = 0
-
-	// collect all addresses
+	// collect all addresses and start detectors
 	addrs := []string(nil)
-	for _, d := range r.instances {
-		addrs = append(addrs, d.LocalNode.Addrs...)
-	}
-
-	// for _, d := range r.instances {
-	// 	d.ProbeInterval = time.Duration(n*2) * time.Millisecond
-	// 	d.ProbeTimeout = 1 * time.Millisecond
-	// }
-
 	for id, d := range r.instances {
+		addrs = append(addrs, d.LocalNode.Addrs...)
+
 		if r.starts[id] {
 			continue
 		}
@@ -232,20 +221,9 @@ func (r *SimConvergenceRunner) start() {
 
 		d.Join(addrs...)
 		r.l.Unlock()
-		// r.Logger.Println("S UNLOCK")
-		t := time.Duration(r.rand.Int63n(int64(d.ProbeInterval)))
-		time.Sleep(t)
-		// r.Logger.Println("S LOCK")
+		time.Sleep(time.Duration(r.rand.Int63n(int64(d.ProbeInterval))))
 		r.l.Lock()
 	}
-
-	// for _, d := range r.instances {
-	// 	d.ProbeInterval = 200 * time.Millisecond
-	// 	d.ProbeTimeout = 10 * time.Millisecond
-	// }
-
-	// r.router.NetDelay = kNetDelay
-	// r.router.NetStdDev = kNetStdDev
 }
 
 func (r *SimConvergenceRunner) kill() {
