@@ -414,6 +414,7 @@ func (d *Detector) suspected(nodes []*InternalNode) {
 	for _, node := range nodes {
 		if node.LastAckTime.IsZero() || node.LastAckTime.Before(d.period) {
 			if node.State != Suspect {
+				node.SuspectTime = d.period
 				d.stateUpdate(node, Suspect, true)
 			}
 		}
@@ -433,16 +434,12 @@ func (d *Detector) suspected(nodes []*InternalNode) {
 		}
 
 		// node is still suspect
-		if !node.LastAckTime.IsZero() && node.LastAckTime.After(deathTime) {
+		if node.SuspectTime.IsZero() || node.SuspectTime.After(deathTime) {
 			continue
 		}
 
-		// we haven't contacted this node yet
-		if node.LastSentTime.IsZero() {
-			continue
-		}
-
-		// the node is dead if it hasn't disputed its suspicion
+		// the node is dead if it hasn't disputed its suspicion since it became
+		// suspected of failure
 		d.stateUpdate(node, Dead, true)
 		delete(d.suspects, id)
 	}
@@ -912,9 +909,6 @@ func (d *Detector) sendTo(node *InternalNode, events ...interface{}) {
 	// send the message with piggybacked broadcasts
 	d.broker.SetBroadcastLimit(d.RetransmitLimit())
 	d.broker.SendTo(node.Addrs, msg)
-
-	// update last sent time
-	node.LastSentTime = time.Now()
 
 	if d.Logger != nil {
 		d.Logger.Printf("[send %v] %v", d.LocalNode.Id, msg)
