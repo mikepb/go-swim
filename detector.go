@@ -605,6 +605,9 @@ func (d *Detector) handleIndirectPingRequest(event *IndirectPingRequestEvent) {
 
 	// anti-entropy
 	if len(event.TargetAddrs) == 0 {
+		if len(target.Addrs) == 0 {
+			return
+		}
 		d.sendTo(from, d.antiEntropy(&target.Node))
 	}
 
