@@ -2,7 +2,7 @@
 
 go build -o simulate sim/main.go
 
-echo "n	first	last	k	p	metric"
+echo "n	detection delay	broadcast delay	# buckets	# direct pings	metric"
 
 for ((p=1;p<=2;p++)); do
 	for ((n=3;n<=32;n++)); do
