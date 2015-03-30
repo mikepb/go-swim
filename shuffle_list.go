@@ -14,7 +14,11 @@ type ShuffleList struct {
 
 // Add nodes to the end of the list.
 func (l *ShuffleList) Add(nodes ...*InternalNode) {
-	l.Nodes = append(l.Nodes, nodes...)
+	if l.NextNodes != nil {
+		l.NextNodes = append(l.NextNodes, nodes...)
+	} else {
+		l.Nodes = append(l.Nodes, nodes...)
+	}
 }
 
 // Remove nodes from the list.

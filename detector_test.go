@@ -26,7 +26,7 @@ func TestDetector(t *testing.T) {
 			DirectProbes:   1,
 			IndirectProbes: 3,
 			ProbeInterval:  200 * time.Millisecond,
-			ProbeTimeout:   10 * time.Millisecond,
+			ProbeTimeout:   20 * time.Millisecond,
 			RetransmitMult: 3,
 			SuspicionMult:  3,
 			Transport:      router.NewTransport(name),

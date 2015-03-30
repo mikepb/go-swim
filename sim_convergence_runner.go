@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"log"
 	"math/rand"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -17,23 +18,26 @@ var nilRunnerLogger = log.New(ioutil.Discard, "[runner] ", 0)
 type SimConvergenceRunner struct {
 	Logger    *log.Logger
 	K         uint
+	P         uint
+	D         Sorter
 	l         sync.Mutex
 	c         sync.Cond
 	startTime time.Time
-	stepTime  time.Time
+	firstTime time.Time
+	subject   *Detector
 	router    *SimRouter
 	rand      *rand.Rand
 
 	instances map[uint64]*Detector
 	starts    map[uint64]bool
 	expect    uint32
-	done      bool
 }
 
 func NewSimConvergenceRunner() *SimConvergenceRunner {
 	r := &SimConvergenceRunner{
 		Logger: nilRunnerLogger,
 		K:      1,
+		P:      1,
 		rand:   rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 	r.c.L = &r.l
@@ -75,7 +79,7 @@ func (r *SimConvergenceRunner) newDetector() *Detector {
 				Id:    id,
 				Addrs: []string{addr},
 			},
-			DirectProbes:   1,
+			DirectProbes:   2,
 			IndirectProbes: 3,
 			ProbeInterval:  200 * time.Millisecond,
 			ProbeTimeout:   20 * time.Millisecond,
@@ -101,7 +105,7 @@ func (r *SimConvergenceRunner) newSelectionList(node *Node) SelectionList {
 	} else {
 		return &BucketList{
 			K:         r.K,
-			Sort:      RingSorter,
+			Sort:      r.D,
 			LocalNode: node,
 		}
 	}
@@ -113,14 +117,22 @@ func (r *SimConvergenceRunner) watch(d *Detector) chan Node {
 
 	go func() {
 		for {
-			if node, ok := <-ch; !ok || node.Id == 0 {
+			node, ok := <-ch
+
+			// always broadcast to unblock
+			r.c.Broadcast()
+
+			if !ok || node.Id == 0 {
 				break
 			}
-			if r.isDone() {
-				r.done = true
-				r.Logger.Printf("W DONE")
-				r.c.Broadcast()
+
+			// record first death
+			r.l.Lock()
+			if r.subject != nil && d != r.subject && r.firstTime.IsZero() &&
+				node.Id == r.subject.LocalNode.Id && node.State == Dead {
+				r.firstTime = time.Now()
 			}
+			r.l.Unlock()
 		}
 
 		defer r.Logger.Printf("W EXIT %d", id)
@@ -147,7 +159,9 @@ func (r *SimConvergenceRunner) isDone() bool {
 	return true
 }
 
-func (r *SimConvergenceRunner) Measure(n uint) time.Duration {
+func (r *SimConvergenceRunner) Measure(n uint) (first, last time.Duration) {
+	runtime.GC()
+
 	r.l.Lock()
 	defer r.l.Unlock()
 
@@ -156,7 +170,6 @@ func (r *SimConvergenceRunner) Measure(n uint) time.Duration {
 
 	r.Logger.Println("M START")
 	atomic.StoreUint32(&r.expect, uint32(n)-1)
-	r.done = false
 	r.start()
 
 	for !r.isDone() {
@@ -164,19 +177,33 @@ func (r *SimConvergenceRunner) Measure(n uint) time.Duration {
 		r.c.Wait()
 	}
 
+	// ensure we reach steady state
+	for _, d := range r.instances {
+		time.Sleep(2 * d.SuspicionDuration())
+		break
+	}
+
 	r.Logger.Println("M KILL")
 	atomic.StoreUint32(&r.expect, uint32(n)-2)
-	r.done = false
-	t := time.Now()
 	r.kill()
+	t := time.Now()
+	r.firstTime = time.Time{}
 
 	for !r.isDone() {
 		r.Logger.Println("M WAIT KILL")
 		r.c.Wait()
 	}
+	now := time.Now()
+
+	if !r.firstTime.IsZero() {
+		first = r.firstTime.Sub(t)
+	} else {
+		first = 365 * 24 * time.Hour
+	}
+	last = now.Sub(t)
 
 	defer r.Logger.Println("M DONE")
-	return time.Since(t)
+	return
 }
 
 func (r *SimConvergenceRunner) start() {
@@ -204,11 +231,12 @@ func (r *SimConvergenceRunner) start() {
 		r.Logger.Printf("S START %v", id)
 
 		d.Join(addrs...)
-		// r.l.Unlock()
+		r.l.Unlock()
 		// r.Logger.Println("S UNLOCK")
-		// time.Sleep(time.Duration(n*n*4) * time.Millisecond)
+		t := time.Duration(r.rand.Int63n(int64(d.ProbeInterval)))
+		time.Sleep(t)
 		// r.Logger.Println("S LOCK")
-		// r.l.Lock()
+		r.l.Lock()
 	}
 
 	// for _, d := range r.instances {
@@ -225,9 +253,10 @@ func (r *SimConvergenceRunner) kill() {
 		r.Logger.Printf("K CLOSE %v", id)
 		d.Close()
 		d.UpdateCh <- Node{}
-		r.Logger.Printf("K KILLED %v", id)
+		r.subject = d
 		delete(r.instances, id)
 		delete(r.starts, id)
+		r.Logger.Printf("K KILLED %v", id)
 		return
 	}
 }
@@ -237,8 +266,9 @@ func (r *SimConvergenceRunner) Reset() {
 	defer r.l.Unlock()
 	for _, d := range r.instances {
 		d.Close()
-		close(d.UpdateCh)
+		d.UpdateCh <- Node{}
 	}
+	r.subject = nil
 	r.router = NewSimRouter()
 	r.instances = make(map[uint64]*Detector)
 	r.starts = make(map[uint64]bool)

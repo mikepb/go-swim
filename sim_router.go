@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const kNetDelay = 2 * time.Millisecond
+const kNetDelay = 10 * time.Millisecond
 const kNetStdDev = kNetDelay / 10
 const kMaxMessageLen = 512
 
@@ -53,7 +53,6 @@ func (r *SimRouter) SendTo(addrs []string, message *CodedMessage) error {
 		for _, addr := range addrs {
 			if t, ok := r.Routes[addr]; ok {
 				t.RecvCh <- message
-				return
 			}
 		}
 	}

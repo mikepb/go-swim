@@ -589,6 +589,15 @@ func (d *Detector) handleIndirectPingRequest(event *IndirectPingRequestEvent) {
 	from := d.lookup(event.From, event.Addrs)
 	target := d.lookup(event.Target, event.TargetAddrs)
 
+	// special case for dead nodes
+	if target.State == Dead {
+		// notify that node is dead
+		d.sendTo(from, d.death(target))
+		// someone didn't get the message, so re-gossip the news
+		d.stateBroadcast(target)
+		return
+	}
+
 	// send indirect ping
 	d.sendTo(target, d.pingVia(from, event.Time))
 }
@@ -880,7 +889,12 @@ func (d *Detector) sendTo(node *InternalNode, events ...interface{}) {
 	msg.AddEvent(events...)
 
 	// re-broadcast self at low priority
-	d.broker.BroadcastL(d.aliveNode(&d.LocalNode))
+	// d.broker.BroadcastL(d.aliveNode(&d.LocalNode))
+	// for _, node := range d.nodeMap {
+	// 	if node.State == Dead {
+	// 		d.broker.BroadcastL(d.death(node))
+	// 	}
+	// }
 
 	// send the message with piggybacked broadcasts
 	d.broker.SetBroadcastLimit(d.RetransmitLimit())

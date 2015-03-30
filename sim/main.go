@@ -17,6 +17,8 @@ var verbose *bool = flag.Bool("verbose", false, "verbose")
 var N *uint = flag.Uint("n", 16, "number of nodes")
 var R *uint = flag.Uint("r", 8, "number of runs")
 var K *uint = flag.Uint("k", 1, "number of buckets")
+var P *uint = flag.Uint("p", 1, "number of direct probes")
+var D *string = flag.String("d", "ring", "distance D")
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
@@ -34,27 +36,41 @@ func main() {
 	flag.Parse()
 
 	l := log.New(os.Stdout, "", 0)
-	l.Printf("mean\tstddev\tn\tk\truns")
 
-	for k := uint(1); k <= *K; k += 1 {
-		r := NewSimConvergenceRunner()
-		r.K = k
-		if *verbose {
-			r.Logger = log.New(os.Stderr, "", 0)
-		}
+	r := NewSimConvergenceRunner()
+	r.K = *K
+	r.P = *P
 
-		for n := uint(2); n <= *N; n += 1 {
-			ts := make([]time.Duration, *R)
-
-			for j := range ts {
-				ts[j] = r.Measure(n)
-				r.Reset()
-			}
-
-			mean, stddev := stat(ts)
-			l.Printf("%v\t%v\t%d\t%d\t%d", mean, stddev, n, k, *R)
-		}
+	d := *D
+	switch d {
+	case "xor":
+		r.D = XorSorter
+	case "finger":
+		r.D = FingerSorter
+	default:
+		r.D = RingSorter
 	}
+	if r.K < 2 {
+		d = ""
+	}
+
+	if *verbose {
+		r.Logger = log.New(os.Stderr, "", 0)
+	}
+
+	first, last := r.Measure(*N)
+	l.Printf("%d\t%v\t%v\t%d\t%d\t%s", *N, first, last, r.K, r.P, d)
+
+	// ts := make([]time.Duration, *R)
+	// fs := make([]time.Duration, *R)
+	// for j := range ts {
+	// 	fs[j], ts[j] = r.Measure(*N)
+	// 	r.Reset()
+	// }
+
+	// fmean, fstddev := stat(fs)
+	// tmean, tstddev := stat(ts)
+	// l.Printf("%d\t%v\t%v\t%v\t%v\t%d\t%d\t%s\t%d", *N, fmean, fstddev, tmean, tstddev, r.K, r.P, d, *R)
 }
 
 func stat(ts []time.Duration) (mean, stddev time.Duration) {

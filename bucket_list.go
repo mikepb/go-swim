@@ -95,7 +95,9 @@ func (l *BucketList) setNext(nodes []*InternalNode) {
 		l := len(unallocated)
 		n := (l*q + d - 1) / d
 		bucket := buckets[i]
-		bucket.SetNext(unallocated[l-n:])
+		// TODO: find time fix this optimization!
+		// bucket.SetNext(unallocated[l-n:])
+		bucket.Nodes = unallocated[l-n:]
 		unallocated = unallocated[:l-n]
 	}
 
