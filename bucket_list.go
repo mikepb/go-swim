@@ -21,9 +21,9 @@ func (l *BucketList) Add(nodes ...*InternalNode) {
 	if k < 2 {
 		panic("K < 2")
 	} else if l.LocalNode == nil {
-		panic("Sort == nil")
-	} else if l.Sort == nil {
 		panic("LocalNode == nil")
+	} else if l.Sort == nil {
+		panic("Sort == nil")
 	}
 
 	// set next set of nodes
@@ -47,23 +47,14 @@ func (l *BucketList) Remove(removes ...*InternalNode) {
 		}
 	}
 
-	// remove from existing buckets
-	// for _, bucket := range l.buckets {
-	// 	bucket.Remove(removes...)
-	// }
-
 	// update for next
 	l.setNext(nodes)
 }
 
 // Set the next list of nodes from which to select.
-func (l *BucketList) SetNext(nodes []*InternalNode) {
-
+func (l *BucketList) Replace(nodes []*InternalNode) {
 	// copy nodes to prevent modifying the underlying array
-	localNodes := make([]*InternalNode, len(nodes))
-	copy(localNodes, nodes)
-
-	l.setNext(localNodes)
+	l.setNext(append([]*InternalNode(nil), nodes...))
 }
 
 // Set the next list of nodes from which to select, modifying the underlying
@@ -95,16 +86,13 @@ func (l *BucketList) setNext(nodes []*InternalNode) {
 		l := len(unallocated)
 		n := (l*q + d - 1) / d
 		bucket := buckets[i]
-		// TODO: find time fix this optimization!
-		// bucket.SetNext(unallocated[l-n:])
-		bucket.Nodes = unallocated[l-n:]
+		bucket.Replace(unallocated[l-n:])
 		unallocated = unallocated[:l-n]
 	}
 
 	// populate first bucket
 	bucket := buckets[0]
-	bucket.Nodes = unallocated
-	// bucket.SetNext(unallocated)
+	bucket.Replace(unallocated)
 
 	// save changes
 	l.nodes = nodes

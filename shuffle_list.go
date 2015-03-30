@@ -7,18 +7,13 @@ import (
 // A shuffle list selects nodes round-robin, shuffling the list after each
 // round. The methods are not safe to run concurrently.
 type ShuffleList struct {
-	Nodes     []*InternalNode // List of nodes
-	NextNodes []*InternalNode // List of nodes for the next round
+	nodes     []*InternalNode // List of nodes
 	nextIndex int
 }
 
 // Add nodes to the end of the list.
 func (l *ShuffleList) Add(nodes ...*InternalNode) {
-	if l.NextNodes != nil {
-		l.NextNodes = append(l.NextNodes, nodes...)
-	} else {
-		l.Nodes = append(l.Nodes, nodes...)
-	}
+	l.nodes = append(l.nodes, nodes...)
 }
 
 // Remove nodes from the list.
@@ -31,12 +26,7 @@ func (l *ShuffleList) Remove(nodes ...*InternalNode) {
 	}
 
 	// remove from current list
-	l.Nodes = l.remove(l.Nodes, rms, l.nextIndex)
-
-	// remove from next list
-	if l.NextNodes != nil {
-		l.NextNodes = l.remove(l.NextNodes, rms, 0)
-	}
+	l.nodes = l.remove(l.nodes, rms, l.nextIndex)
 }
 
 func (s *ShuffleList) remove(nodes []*InternalNode, removes map[uint64]bool, nextIndex int) []*InternalNode {
@@ -70,12 +60,12 @@ func (s *ShuffleList) remove(nodes []*InternalNode, removes map[uint64]bool, nex
 // Select a node from the list.
 func (l *ShuffleList) Next() *InternalNode {
 	i := l.nextIndex
-	size := len(l.Nodes)
+	size := len(l.nodes)
 
 	// shuffle the list if past end
 	if i >= size {
 		l.Shuffle()
-		size = len(l.Nodes)
+		size = len(l.nodes)
 		i = 0
 	}
 
@@ -86,13 +76,13 @@ func (l *ShuffleList) Next() *InternalNode {
 
 	// one node
 	if size == 1 {
-		return l.Nodes[0]
+		return l.nodes[0]
 	}
 
 	// get next node
 	var node *InternalNode
 	if i < size {
-		node = l.Nodes[i]
+		node = l.nodes[i]
 	}
 
 	// update index
@@ -102,49 +92,28 @@ func (l *ShuffleList) Next() *InternalNode {
 	return node
 }
 
-// Set the list of nodes to use for the next round. This method is used to
-// support efficient node updates from a bucket list.
-func (l *ShuffleList) SetNext(nodes []*InternalNode) {
-	if len(l.Nodes) == 0 {
-		l.Nodes, l.NextNodes = nodes, nil
-		l.Shuffle()
-	} else {
-		l.NextNodes = nodes
-	}
+// Set the list of nodes to use for the next round.
+func (l *ShuffleList) Replace(nodes []*InternalNode) {
+	l.nodes = nodes
+	l.nextIndex = 0
+	l.Shuffle()
 }
 
 // Shuffle the list.
 func (l *ShuffleList) Shuffle() {
-
-	// swap out next set of nodes
-	if l.NextNodes != nil {
-		l.Nodes, l.NextNodes = l.NextNodes, nil
-	}
-
-	// randomize list
-	for i := len(l.Nodes) - 1; i > 0; i -= 1 {
+	for i := len(l.nodes) - 1; i > 0; i -= 1 {
 		j := rand.Intn(i + 1)
-		l.Nodes[i], l.Nodes[j] = l.Nodes[j], l.Nodes[i]
+		l.nodes[i], l.nodes[j] = l.nodes[j], l.nodes[i]
 	}
 }
 
 // Get a list of the contained nodes. The returned list references the
-// internal slice and should not be modified. If a list of nodes to use for
-// the next round is set, that list is returned instead of the currently
-// active list.
+// internal slice and should not be modified.
 func (l *ShuffleList) List() []*InternalNode {
-	if l.NextNodes != nil {
-		return l.NextNodes
-	}
-	return l.Nodes
+	return l.nodes
 }
 
-// Get the length of the list. If a list of nodes to use for the next round
-// is set, the length of that list is returned instead of the length of the
-// currently active list.
+// Get the length of the list.
 func (l *ShuffleList) Len() int {
-	if l.NextNodes != nil {
-		return len(l.NextNodes)
-	}
-	return len(l.Nodes)
+	return len(l.nodes)
 }
