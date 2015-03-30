@@ -103,7 +103,8 @@ func (l *BucketList) setNext(nodes []*InternalNode) {
 
 	// populate first bucket
 	bucket := buckets[0]
-	bucket.SetNext(unallocated)
+	bucket.Nodes = unallocated
+	// bucket.SetNext(unallocated)
 
 	// save changes
 	l.nodes = nodes
