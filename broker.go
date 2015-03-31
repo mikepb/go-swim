@@ -93,22 +93,18 @@ func (b *Broker) encodeWithBroadcasts(coded *CodedMessage) error {
 
 		// limit number of piggybacked broadcasts if supported
 		if b.Transport.MaxMessageLen() > 0 && b.bEstimate > 0.0 {
-			i := int(b.bEstimate) - len(coded.Message.Events())
-
-			// attach at least one event
-			if i < 1 {
-				i = 1
-			}
-
-			// update max if less
-			if i < max {
+			if i := int(b.bEstimate) - len(coded.Message.Events()); i < 1 {
+				// attach at least one event
+				max = 1
+			} else if i < max {
+				// bound to number of broadcasts
 				max = i
 			}
 		}
 
 		// add the events
 		for _, bcast := range bcasts[:max] {
-			// don't send broadcast to source
+			// don't send more broadcast to source
 			if coded.Message.To != bcast.Event.Source() {
 				coded.Message.AddEvent(bcast.Event)
 				bcast.Attempts += 1

@@ -6,6 +6,7 @@ type Broadcast struct {
 	Attempts uint           // Number of transmissions attempted
 	Event    BroadcastEvent // The event to broadcast
 	Done     chan struct{}  // The channel on which to signal done
+	order    int
 }
 
 // Calculate the overall priority for the broadcast. Broadcasts with lower
