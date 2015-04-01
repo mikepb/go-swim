@@ -29,6 +29,18 @@ func (b *Broadcast) Invalidates(that *Broadcast) bool {
 	if ltag != rtag {
 		return false
 	}
-	cmp := that.Event.Seq().Compare(b.Event.Seq().Get())
-	return cmp < 0 || cmp == 0 && b.Event.Source() == ltag.Id
+
+	if cmp := that.Event.Seq().Compare(b.Event.Seq().Get()); cmp < 0 {
+		return true
+	} else if cmp == 0 {
+		// handle invalidation based on event
+		switch b.Event.(type) {
+		case DeathEvent:
+			return true
+		case SuspectEvent:
+			_, ok := that.Event.(DeathEvent)
+			return !ok
+		}
+	}
+	return false
 }

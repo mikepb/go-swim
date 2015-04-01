@@ -118,17 +118,17 @@ func (e AliveEvent) String() string {
 }
 
 // Get the source for this broadcast event.
-func (e *AliveEvent) Source() uint64 {
+func (e AliveEvent) Source() uint64 {
 	return e.From
 }
 
 // Get the tag for the alive event.
-func (e *AliveEvent) Tag() BroadcastTag {
+func (e AliveEvent) Tag() BroadcastTag {
 	return BroadcastTag{e.Id, true}
 }
 
 // Get the sequence for the alive event.
-func (e *AliveEvent) Seq() *Seq {
+func (e AliveEvent) Seq() *Seq {
 	return &e.Incarnation
 }
 
@@ -147,17 +147,17 @@ func (e SuspectEvent) String() string {
 }
 
 // Get the source for this broadcast event.
-func (e *SuspectEvent) Source() uint64 {
+func (e SuspectEvent) Source() uint64 {
 	return e.From
 }
 
 // Get the tag for the suspect event.
-func (e *SuspectEvent) Tag() BroadcastTag {
+func (e SuspectEvent) Tag() BroadcastTag {
 	return BroadcastTag{e.Id, true}
 }
 
 // Get the sequence for the suspect event.
-func (e *SuspectEvent) Seq() *Seq {
+func (e SuspectEvent) Seq() *Seq {
 	return &e.Incarnation
 }
 
@@ -176,17 +176,17 @@ func (e DeathEvent) String() string {
 }
 
 // Get the source for this broadcast event.
-func (e *DeathEvent) Source() uint64 {
+func (e DeathEvent) Source() uint64 {
 	return e.From
 }
 
 // Get the tag for the death event.
-func (e *DeathEvent) Tag() BroadcastTag {
+func (e DeathEvent) Tag() BroadcastTag {
 	return BroadcastTag{e.Id, true}
 }
 
 // Get the sequence for the death event.
-func (e *DeathEvent) Seq() *Seq {
+func (e DeathEvent) Seq() *Seq {
 	return &e.Incarnation
 }
 
@@ -206,16 +206,16 @@ func (e UserEvent) String() string {
 }
 
 // Get the source for this broadcast event.
-func (e *UserEvent) Source() uint64 {
+func (e UserEvent) Source() uint64 {
 	return e.From
 }
 
 // Get the tag for the user event.
-func (e *UserEvent) Tag() BroadcastTag {
+func (e UserEvent) Tag() BroadcastTag {
 	return BroadcastTag{uint64(e.Incarnation), false}
 }
 
 // Get the sequence for the user event.
-func (e *UserEvent) Seq() *Seq {
+func (e UserEvent) Seq() *Seq {
 	return &e.Incarnation
 }
