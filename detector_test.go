@@ -25,8 +25,8 @@ func TestDetector(t *testing.T) {
 			},
 			DirectProbes:   1,
 			IndirectProbes: 3,
-			ProbeInterval:  200 * time.Millisecond,
-			ProbeTimeout:   20 * time.Millisecond,
+			ProbeInterval:  1000 * time.Millisecond,
+			ProbeTimeout:   300 * time.Millisecond,
 			RetransmitMult: 3,
 			SuspicionMult:  3,
 			Transport:      router.NewTransport(name),
@@ -81,8 +81,12 @@ func TestDetector(t *testing.T) {
 
 	// N1 should suspect N2
 	n2.Stop()
+RETRY_SUSPECT1:
 	if u := <-n1.UpdateCh; u.State != Suspect {
-		t.Fatalf("N1 did not suspect N2")
+		if u.State == Alive {
+			goto RETRY_SUSPECT1
+		}
+		t.Fatalf("N1 did not suspect N2 %v", u)
 	}
 
 	// N1 should consider N2 dead
@@ -101,10 +105,10 @@ func TestDetector(t *testing.T) {
 
 	// N1 should eventually suspect N2
 	n2.Stop()
-RETRY_SUSPECT:
+RETRY_SUSPECT2:
 	if u := <-n1.UpdateCh; u.State != Suspect {
 		if u.State == Alive {
-			goto RETRY_SUSPECT
+			goto RETRY_SUSPECT2
 		}
 		t.Fatalf("N1 did not suspect N2 %v", u)
 	}

@@ -132,6 +132,11 @@ func (b *Broker) encodeWithBroadcasts(coded *CodedMessage) error {
 		count := float64(len(coded.Message.Events()))
 		b.bEstimate = 0.75*b.bEstimate + 0.25*(maxSize/(size/count))
 
+		// bias the estimate towards including more broadcasts
+		if size < maxSize {
+			b.bEstimate += 0.1
+		}
+
 	} else {
 
 		// encoder does not support size

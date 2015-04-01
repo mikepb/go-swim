@@ -47,26 +47,23 @@ func main() {
 		r.D = XorSorter
 	case "finger":
 		r.D = FingerSorter
-	default:
+	case "ring":
 		r.D = RingSorter
-	}
-	if r.K < 2 {
-		d = ""
+	default:
+		r.K = 1
+		d = "none"
 	}
 
 	if *verbose {
 		r.Logger = log.New(os.Stderr, "", 0)
 	}
 
-	first, last := r.Measure(*N)
-	l.Printf("%d\t%v\t%v\t%d\t%d\t%s", *N, first, last, r.K, r.P, d)
-
 	// ts := make([]time.Duration, *R)
 	// fs := make([]time.Duration, *R)
-	// for j := range ts {
-	// 	fs[j], ts[j] = r.Measure(*N)
-	// 	r.Reset()
-	// }
+	for i := uint(0); i < *R; i += 1 {
+		first, last := r.Measure(*N)
+		l.Printf("%d\t%v\t%v\t%d\t%d\t%s", *N, first, last, r.K, r.P, d)
+	}
 
 	// fmean, fstddev := stat(fs)
 	// tmean, tstddev := stat(ts)

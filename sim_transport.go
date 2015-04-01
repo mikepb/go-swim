@@ -4,8 +4,6 @@ import (
 	"errors"
 )
 
-const kRecvChSize = 8
-
 // SimTransport implements a Transport suitable for use with the simulator.
 type SimTransport struct {
 	Router *SimRouter
@@ -17,7 +15,7 @@ type SimTransport struct {
 func NewSimTransport(h *SimRouter) *SimTransport {
 	return &SimTransport{
 		Router: h,
-		RecvCh: make(chan *CodedMessage, kRecvChSize),
+		RecvCh: make(chan *CodedMessage),
 	}
 }
 

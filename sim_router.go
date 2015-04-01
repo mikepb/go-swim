@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const kNetDelay = 5 * time.Millisecond
+const kNetDelay = 50 * time.Millisecond
 const kNetStdDev = kNetDelay / 10
 const kMaxMessageLen = 512
 
@@ -47,6 +47,7 @@ func (r *SimRouter) NewTransport(addr string) *SimTransport {
 
 // Send a message to the first transport matching the addresses.
 func (r *SimRouter) SendTo(addrs []string, message *CodedMessage) error {
+	defer runtime.Gosched()
 
 	deliver := func() {
 		defer func() { recover() }()
@@ -61,11 +62,9 @@ func (r *SimRouter) SendTo(addrs []string, message *CodedMessage) error {
 
 	// support no delay
 	if delay == 0 {
-		go deliver()
+		deliver()
 		return nil
 	}
-
-	defer runtime.Gosched()
 
 	// delay the packet to simulate a "real" network
 	time.AfterFunc(delay, deliver)

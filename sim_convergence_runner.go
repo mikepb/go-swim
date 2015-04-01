@@ -2,7 +2,6 @@ package swim
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
 	"math/rand"
 	"runtime"
@@ -10,8 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 )
-
-var nilRunnerLogger = log.New(ioutil.Discard, "[runner] ", 0)
 
 // Run a simulator that measures the time for all nodes to agree on the
 // number of members after a failure occurs.
@@ -35,10 +32,9 @@ type SimConvergenceRunner struct {
 
 func NewSimConvergenceRunner() *SimConvergenceRunner {
 	r := &SimConvergenceRunner{
-		Logger: nilRunnerLogger,
-		K:      1,
-		P:      1,
-		rand:   rand.New(rand.NewSource(time.Now().UnixNano())),
+		K:    1,
+		P:    1,
+		rand: rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 	r.c.L = &r.l
 	r.Reset()
@@ -48,7 +44,9 @@ func NewSimConvergenceRunner() *SimConvergenceRunner {
 func (r *SimConvergenceRunner) populate(n uint) {
 	if l := len(r.instances); l > int(n) {
 		for id, d := range r.instances {
-			r.Logger.Printf("P REMOVE %v", d.LocalNode.Id)
+			if r.Logger != nil {
+				r.Logger.Printf("P REMOVE %v", d.LocalNode.Id)
+			}
 			delete(r.instances, id)
 			delete(r.starts, id)
 			l -= 1
@@ -59,7 +57,9 @@ func (r *SimConvergenceRunner) populate(n uint) {
 	} else {
 		for i := l; i < int(n); i += 1 {
 			d := r.newDetector()
-			r.Logger.Printf("P NEW %v", d.LocalNode.Id)
+			if r.Logger != nil {
+				r.Logger.Printf("P NEW %v", d.LocalNode.Id)
+			}
 			r.instances[d.LocalNode.Id] = d
 		}
 	}
@@ -81,12 +81,12 @@ func (r *SimConvergenceRunner) newDetector() *Detector {
 			},
 			DirectProbes:   r.P,
 			IndirectProbes: 3,
-			ProbeInterval:  200 * time.Millisecond,
-			ProbeTimeout:   50 * time.Millisecond,
+			ProbeInterval:  1000 * time.Millisecond,
+			ProbeTimeout:   300 * time.Millisecond,
 			RetransmitMult: 4,
 			SuspicionMult:  5,
 			Transport:      r.router.NewTransport(addr),
-			Codec:          &LZ4Codec{new(GobCodec)},
+			Codec:          &FlateCodec{new(GobCodec)},
 		}
 
 		d.Logger = r.Logger
@@ -135,13 +135,16 @@ func (r *SimConvergenceRunner) watch(d *Detector) chan Node {
 			r.l.Unlock()
 		}
 
-		defer r.Logger.Printf("W EXIT %d", id)
 		r.l.Lock()
 		delete(r.instances, id)
 		delete(r.starts, id)
 		delete(r.router.Routes, d.LocalNode.Addrs[0])
 		r.c.Broadcast()
 		r.l.Unlock()
+
+		if r.Logger != nil {
+			r.Logger.Printf("W EXIT %d", id)
+		}
 	}()
 
 	return ch
@@ -149,9 +152,14 @@ func (r *SimConvergenceRunner) watch(d *Detector) chan Node {
 
 func (r *SimConvergenceRunner) isDone() bool {
 	expect := int(atomic.LoadUint32(&r.expect))
-	for _, d := range r.instances {
+	for id, d := range r.instances {
+		if !r.starts[id] {
+			continue
+		}
 		c := d.ActiveCount()
-		r.Logger.Printf("W COMPARE %d <> %d", c, expect)
+		if r.Logger != nil {
+			r.Logger.Printf("W COMPARE %d <> %d", c, expect)
+		}
 		if c != expect {
 			return false
 		}
@@ -165,15 +173,21 @@ func (r *SimConvergenceRunner) Measure(n uint) (first, last time.Duration) {
 	r.l.Lock()
 	defer r.l.Unlock()
 
-	r.Logger.Println("M POPULATE")
+	if r.Logger != nil {
+		r.Logger.Println("M POPULATE")
+	}
 	r.populate(n)
 
-	r.Logger.Println("M START")
+	if r.Logger != nil {
+		r.Logger.Println("M START")
+	}
 	atomic.StoreUint32(&r.expect, uint32(n)-1)
 	r.start()
 
 	for !r.isDone() {
-		r.Logger.Println("M WAIT START")
+		if r.Logger != nil {
+			r.Logger.Println("M WAIT START")
+		}
 		r.c.Wait()
 	}
 
@@ -183,14 +197,18 @@ func (r *SimConvergenceRunner) Measure(n uint) (first, last time.Duration) {
 		break
 	}
 
-	r.Logger.Println("M KILL")
+	if r.Logger != nil {
+		r.Logger.Println("M KILL")
+	}
 	atomic.StoreUint32(&r.expect, uint32(n)-2)
 	r.kill()
 	t := time.Now()
 	r.firstTime = time.Time{}
 
 	for !r.isDone() {
-		r.Logger.Println("M WAIT KILL")
+		if r.Logger != nil {
+			r.Logger.Println("M WAIT KILL")
+		}
 		r.c.Wait()
 	}
 	now := time.Now()
@@ -202,22 +220,29 @@ func (r *SimConvergenceRunner) Measure(n uint) (first, last time.Duration) {
 	}
 	last = now.Sub(t)
 
-	defer r.Logger.Println("M DONE")
+	if r.Logger != nil {
+		r.Logger.Println("M DONE")
+	}
 	return
 }
 
 func (r *SimConvergenceRunner) start() {
 
-	// collect all addresses and start detectors
+	// collect all addresses
 	addrs := []string(nil)
-	for id, d := range r.instances {
+	for _, d := range r.instances {
 		addrs = append(addrs, d.LocalNode.Addrs...)
+	}
 
+	// start detectors
+	for id, d := range r.instances {
 		if r.starts[id] {
 			continue
 		}
 		r.starts[id] = true
-		r.Logger.Printf("S START %v", id)
+		if r.Logger != nil {
+			r.Logger.Printf("S START %v", id)
+		}
 
 		d.Join(addrs...)
 		r.l.Unlock()
@@ -228,13 +253,18 @@ func (r *SimConvergenceRunner) start() {
 
 func (r *SimConvergenceRunner) kill() {
 	for id, d := range r.instances {
-		r.Logger.Printf("K CLOSE %v", id)
+		if r.Logger != nil {
+			r.Logger.Printf("K CLOSE %v", id)
+		}
+		r.subject = d
+		// d.Stop()
 		d.Close()
 		d.UpdateCh <- Node{}
-		r.subject = d
 		delete(r.instances, id)
 		delete(r.starts, id)
-		r.Logger.Printf("K KILLED %v", id)
+		if r.Logger != nil {
+			r.Logger.Printf("K KILLED %v", id)
+		}
 		return
 	}
 }
