@@ -14,8 +14,7 @@ trap 'exit' SIGHUP SIGINT SIGTERM
 function simulate {
 	isdone=false
 	while ! $isdone; do
-		echo ./simulate -r $imax -n $1 -k $2 -p $3 -d $4
-		# ./simulate -r $imax -n $1 -k $2 -p $3 -d $4
+		./simulate -r $imax -n $1 -k $2 -p $3 -d $4
 		isdone=true
 	done
 }
@@ -25,7 +24,7 @@ echo "n	detection delay	broadcast delay	# buckets	# direct pings	metric"
 for ((p=1;p<=$pmax;p=p+p)); do
 	for ((n=4;n<=$nmax;n=n+n)); do
 		# for ((i=1;i<=$imax;i++)); do
-			simulate $n $k $p none
+			simulate $n 1 $p none
 		# done
 	done
 done
