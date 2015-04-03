@@ -22,31 +22,29 @@ func (s byValue) Less(i, j int) bool { return s[i].SortValue < s[j].SortValue }
 
 // Sort using the Chord finger.
 func FingerSorter(nodes []*InternalNode, localNode *Node) error {
-	l := len(nodes)
 
-	// prepare sorted list
-	presorted := make([]*InternalNode, l)
-	copy(presorted, nodes)
-	sort.Sort(byId(presorted))
-
-	// find starting index
-	startIndex := sort.Search(l, func(i int) bool {
-		return presorted[i].Id >= localNode.Id
-	}) % l
-
-	// populate output list by chord fingers
-	for i := range nodes {
-		// next finger index
-		j := (startIndex + (1 << uint(i)) - 1) % l
-		// find next available node
-		for presorted[j] == nil {
-			j = (j + 1) % l
-		}
-		// save in output list
-		nodes[i] = presorted[j]
-		presorted[j] = nil
+	// sort into ring
+	if err := RingSorter(nodes, localNode); err != nil {
+		return err
 	}
 
+	// reset values
+	for _, node := range nodes {
+		node.SortValue = 0
+	}
+
+	// calculate fingers
+	max := uint64(len(nodes))
+	for i := uint64(1); i-1 < max; i += i {
+		nodes[i-1].SortValue = i
+	}
+	for i, node := range nodes {
+		if node.SortValue == 0 {
+			node.SortValue = max + uint64(i)
+		}
+	}
+
+	sort.Sort(byValue(nodes))
 	return nil
 }
 
