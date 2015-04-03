@@ -13,7 +13,7 @@ trap 'exit' SIGHUP SIGINT SIGTERM
 simulate() {
 	local isdone=false
 	while ! $isdone; do
-		timeout -s 9 -t 600 docker run -v $PWD:/sim -w /sim busybox ./simulate -r 1 -n $1 -k $2 -p $3 -d $4
+		docker run -v $PWD:/sim -w /sim ubuntu:14.04 timeout -s 9 -k 20m 10m ./simulate -r 1 -n $1 -k $2 -p $3 -d $4
 		if [ $? -eq 0 ]; then
 			isdone=true
 		fi
@@ -28,7 +28,7 @@ loop() {
 			local n=$5
 			while [ $n -le $6 ]; do
 				for i in `seq 1 $7`; do
-					simulate $n $k $p finger
+					simulate $n $k $p $8
 				done
 				n=`expr $n + $n`
 			done
