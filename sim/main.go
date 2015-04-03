@@ -5,9 +5,9 @@ import (
 	"log"
 	"math"
 	"os"
-	"os/signal"
+	// "os/signal"
 	"runtime"
-	"syscall"
+	// "syscall"
 	"time"
 
 	. "github.com/mikepb/go-swim"
@@ -21,17 +21,17 @@ var P *uint = flag.Uint("p", 1, "number of direct probes")
 var D *string = flag.String("d", "ring", "distance D")
 
 func main() {
-	// runtime.GOMAXPROCS(runtime.NumCPU())
+	runtime.GOMAXPROCS(runtime.NumCPU())
 
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, syscall.SIGINFO)
-	go func() {
-		for range c {
-			buf := make([]byte, 8096*1024)
-			n := runtime.Stack(buf, true)
-			os.Stderr.Write(buf[:n])
-		}
-	}()
+	// c := make(chan os.Signal, 1)
+	// signal.Notify(c, syscall.SIGINFO)
+	// go func() {
+	// 	for range c {
+	// 		buf := make([]byte, 8096*1024)
+	// 		n := runtime.Stack(buf, true)
+	// 		os.Stderr.Write(buf[:n])
+	// 	}
+	// }()
 
 	flag.Parse()
 
