@@ -5,8 +5,7 @@ pmax=2
 nmax=128
 runs=8
 
-# GOMAXPROCS=8 ./sim.sh
-# go build -o simulate sim/main.go
+# GOOS=linux go build -o simulate sim/main.go
 
 trap 'exit' SIGHUP SIGINT SIGTERM
 
@@ -43,6 +42,6 @@ echo "n	detection delay	broadcast delay	# buckets	# direct pings	metric"
 loop 1 1 1 $pmax 4 $nmax $runs none
 
 # k=1 kmax=$kmax p=2 pmax=$pmax n=4 nmax=$nmax
-loop 1 $kmax 2 $pmax 4 $nmax $runs finger
-loop 1 $kmax 2 $pmax 4 $nmax $runs ring
-loop 1 $kmax 2 $pmax 4 $nmax $runs xor
+loop 2 $kmax 1 $pmax 4 $nmax $runs finger
+loop 2 $kmax 1 $pmax 4 $nmax $runs ring
+loop 2 $kmax 1 $pmax 4 $nmax $runs xor
