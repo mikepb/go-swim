@@ -2,10 +2,11 @@ package swim
 
 // A broadcast describes an event to be broadcast to the group.
 type Broadcast struct {
-	Class    uint           // Priority class of the broadcast
-	Attempts uint           // Number of transmissions attempted
-	Event    BroadcastEvent // The event to broadcast
-	Done     chan struct{}  // The channel on which to signal done
+	Class    uint                // Priority class of the broadcast
+	Attempts uint                // Number of transmissions attempted
+	Event    BroadcastEvent      // The event to broadcast
+	Done     chan struct{}       // The channel on which to signal done
+	State    map[uint64]struct{} // For avoiding sending to the same node
 	order    int
 }
 

@@ -1061,10 +1061,14 @@ func (d *Detector) SuspicionDuration() time.Duration {
 // Calculate the retransmission limit for broadcasts.
 func (d *Detector) RetransmitLimit() uint {
 	// calculate the retransmission limit as mult*log(N+1); the division by three
-	n := d.ActiveCount()
-	i := log2ceil(int(n)+1) / 3
+	n := uint(d.ActiveCount())
+	i := uint(log2ceil(int(n)+1) / 3)
 	if i < 1 {
 		i = 1
 	}
-	return d.RetransmitMult * uint(i)
+	i = d.RetransmitMult * i
+	if i > n {
+		return n
+	}
+	return i
 }

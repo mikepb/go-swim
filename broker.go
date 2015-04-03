@@ -104,10 +104,16 @@ func (b *Broker) encodeWithBroadcasts(coded *CodedMessage) error {
 
 		// add the events
 		for _, bcast := range bcasts[:max] {
-			// don't send more broadcast to source
-			if coded.Message.To != bcast.Event.Source() {
+			// lazy initialize state
+			if bcast.State == nil {
+				bcast.State = make(map[uint64]struct{})
+				bcast.State[bcast.Event.Source()] = struct{}{}
+			}
+			// don't send more broadcast to source or the same node
+			if _, ok := bcast.State[coded.Message.To]; !ok {
 				coded.Message.AddEvent(bcast.Event)
 				bcast.Attempts += 1
+				bcast.State[coded.Message.To] = struct{}{}
 			}
 		}
 
